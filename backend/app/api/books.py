@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import delete, update
@@ -21,6 +21,7 @@ from app.utils.logger import logger
 from app.services.pdf.extractor import pdf_extractor
 from app.services.rag.chunker import chunker
 from app.services.rag.vector_store import vector_store
+from app.services.storage.cloud_storage import cloud_storage
 
 router = APIRouter(tags=["Books & Library"])
 
@@ -46,9 +47,7 @@ DEFAULT_SUBJECTS = [
 
 @router.get("/subjects", response_model=List[SubjectResponse])
 async def list_subjects(db: AsyncSession = Depends(get_db)):
-    """
-    Returns all standard and custom MPSC subjects.
-    """
+    """Returns all standard and custom MPSC subjects."""
     result = await db.execute(select(Subject))
     subjects = result.scalars().all()
     
@@ -71,9 +70,7 @@ async def list_subjects(db: AsyncSession = Depends(get_db)):
 
 @router.post("/subjects", response_model=SubjectResponse)
 async def create_custom_subject(data: SubjectCreate, db: AsyncSession = Depends(get_db)):
-    """
-    Creates a new custom study subject.
-    """
+    """Creates a new custom study subject."""
     existing = await db.execute(select(Subject).where(Subject.name_mr == data.name_mr))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="हा विषय आधीच उपलब्ध आहे.")
@@ -90,15 +87,33 @@ async def create_custom_subject(data: SubjectCreate, db: AsyncSession = Depends(
     await db.refresh(subj)
     return subj
 
-def _background_process_pdf(book_id: int, file_path: str):
+def _background_process_pdf(book_id: int, file_path: str, storage_path: Optional[str] = None):
     """
-    Background worker that runs PDF text extraction, OCR, chunking, and embedding.
+    Background worker that runs PDF text extraction, OCR, chunking, and durable PostgreSQL embedding.
     """
     db = SyncSessionLocal()
     try:
         book = db.query(Book).filter(Book.id == book_id).first()
         if not book:
             return
+
+        # Ensure local file exists or download from persistent Supabase Storage
+        if not os.path.exists(file_path) and storage_path:
+            try:
+                logger.info(f"Downloading [{storage_path}] from Supabase Storage for processing...")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                pdf_bytes = loop.run_until_complete(cloud_storage.download_file(storage_path))
+                loop.close()
+                Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+                with open(file_path, "wb") as f:
+                    f.write(pdf_bytes)
+            except Exception as dl_err:
+                logger.error(f"Failed to fetch PDF from Supabase storage: {dl_err}")
+                book.status = ProcessingStatus.FAILED
+                book.status_message = "Persistent storage वरून फाईल लोड करताना त्रुटी आली."
+                db.commit()
+                return
 
         book.status = ProcessingStatus.EXTRACTING
         book.status_message = "PDF मधील मजकूर काढत आहे..."
@@ -164,7 +179,7 @@ def _background_process_pdf(book_id: int, file_path: str):
         book.progress_percent = 85.0
         db.commit()
 
-        # Save chunks to DB
+        # Save chunks to PostgreSQL document_chunks table
         for c in chunks:
             chunk_rec = DocumentChunk(
                 chunk_uuid=c["chunk_uuid"],
@@ -213,18 +228,37 @@ async def upload_book(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Uploads a new PDF book, saves it to local disk, and starts background extraction and indexing.
+    Uploads a new PDF book, uploads it to Supabase Storage, and starts background extraction.
+    Includes duplicate checksum protection.
     """
     filename = sanitize_filename(file.filename or "book.pdf")
-    
-    # Read file content to check size
     contents = await file.read()
     file_size = len(contents)
     validate_pdf_file(filename, file.content_type or "application/pdf", file_size)
 
-    # Save to disk
+    # 1. Checksum generation for duplicate protection
+    checksum = cloud_storage.calculate_checksum(contents)
+    
+    # Check if identical completed book already exists
+    existing_q = await db.execute(
+        select(Book).where(Book.checksum == checksum, Book.status == ProcessingStatus.COMPLETED)
+    )
+    existing_book = existing_q.scalar_one_or_none()
+    if existing_book:
+        logger.info(f"Duplicate upload detected (checksum={checksum[:12]}...). Returning existing book id={existing_book.id}.")
+        return existing_book
+
+    # 2. Upload to Supabase Storage persistent bucket
+    storage_path = f"books/{checksum[:16]}_{filename}"
+    try:
+        await cloud_storage.upload_file(contents, storage_path, content_type="application/pdf")
+    except Exception as e:
+        logger.warning(f"Could not upload to cloud storage directly, saving locally: {e}")
+
+    # Local temp caching for background extraction
     save_dir = Path(settings.BOOKS_PATH)
-    save_path = save_dir / f"{int(asyncio.get_event_loop().time())}_{filename}"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    save_path = save_dir / f"{checksum[:16]}_{filename}"
     with open(save_path, "wb") as f:
         f.write(contents)
 
@@ -238,6 +272,8 @@ async def upload_book(
         title=book_title,
         original_filename=filename,
         file_path=str(save_path),
+        storage_path=storage_path,
+        checksum=checksum,
         subject_id=subject.id if subject else None,
         subject_name=subject_name or "इतिहास",
         file_size_bytes=file_size,
@@ -250,7 +286,7 @@ async def upload_book(
     await db.refresh(book)
 
     # Launch background indexing
-    background_tasks.add_task(_background_process_pdf, book.id, str(save_path))
+    background_tasks.add_task(_background_process_pdf, book.id, str(save_path), storage_path)
 
     return book
 
@@ -260,9 +296,7 @@ async def list_books(
     search: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Lists all uploaded books with optional subject filtering and keyword search.
-    """
+    """Lists all uploaded books with optional subject filtering and keyword search."""
     query = select(Book).order_by(Book.created_at.desc())
     if subject_name and subject_name != "All":
         query = query.where(Book.subject_name == subject_name)
@@ -278,9 +312,7 @@ async def list_books(
 
 @router.get("/books/{book_id}", response_model=BookResponse)
 async def get_book_detail(book_id: int, db: AsyncSession = Depends(get_db)):
-    """
-    Returns details for a specific book.
-    """
+    """Returns details for a specific book."""
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
@@ -289,9 +321,7 @@ async def get_book_detail(book_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.get("/books/{book_id}/status", response_model=BookStatusResponse)
 async def get_book_status(book_id: int, db: AsyncSession = Depends(get_db)):
-    """
-    Polls real-time PDF processing status and progress percentage.
-    """
+    """Polls real-time PDF processing status and progress percentage."""
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
@@ -308,27 +338,56 @@ async def get_book_status(book_id: int, db: AsyncSession = Depends(get_db)):
         is_indexed=book.is_indexed
     )
 
-@router.get("/books/{book_id}/pdf")
-async def get_book_pdf(book_id: int, db: AsyncSession = Depends(get_db)):
-    """
-    Serves the raw PDF file for in-app reader viewing.
-    """
+@router.get("/books/{book_id}/signed-url")
+async def get_book_signed_url(book_id: int, db: AsyncSession = Depends(get_db)):
+    """Returns a secure short-lived signed URL for reading/downloading from Supabase Storage."""
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
-    if not book or not os.path.exists(book.file_path):
-        raise HTTPException(status_code=404, detail="PDF फाईल सापडली नाही.")
+    if not book:
+        raise HTTPException(status_code=404, detail="पुस्तक सापडले नाही.")
 
-    return FileResponse(
-        path=book.file_path,
-        media_type="application/pdf",
-        filename=book.original_filename
-    )
+    storage_path = book.storage_path or f"books/{Path(book.file_path).name}"
+    signed_url = await cloud_storage.get_signed_url(storage_path, expires_in=3600)
+    return {
+        "book_id": book.id,
+        "title": book.title,
+        "signed_url": signed_url,
+        "expires_in": 3600
+    }
+
+@router.get("/books/{book_id}/pdf")
+async def get_book_pdf(book_id: int, db: AsyncSession = Depends(get_db)):
+    """Serves the PDF file from local cache or directly from Supabase Storage."""
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(status_code=404, detail="पुस्तक सापडले नाही.")
+
+    # 1. Try local cached file
+    if book.file_path and os.path.exists(book.file_path):
+        return FileResponse(
+            path=book.file_path,
+            media_type="application/pdf",
+            filename=book.original_filename
+        )
+
+    # 2. Download on demand from Supabase Storage
+    if book.storage_path:
+        try:
+            pdf_bytes = await cloud_storage.download_file(book.storage_path)
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'inline; filename="{book.original_filename}"'}
+            )
+        except Exception as e:
+            logger.error(f"Error serving PDF from cloud storage: {e}")
+
+    raise HTTPException(status_code=404, detail="PDF फाईल सापडली नाही.")
 
 @router.get("/books/{book_id}/pages/{page_num}")
 async def get_page_text(book_id: int, page_num: int, db: AsyncSession = Depends(get_db)):
-    """
-    Gets extracted text for a specific page.
-    """
+    """Gets extracted text for a specific page."""
     result = await db.execute(
         select(Page).where(Page.book_id == book_id, Page.page_number == page_num)
     )
@@ -346,9 +405,7 @@ async def get_page_text(book_id: int, page_num: int, db: AsyncSession = Depends(
 
 @router.patch("/books/{book_id}", response_model=BookResponse)
 async def update_book(book_id: int, data: BookRenameRequest, db: AsyncSession = Depends(get_db)):
-    """
-    Renames book or changes its subject.
-    """
+    """Renames book or changes its subject."""
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
@@ -364,22 +421,33 @@ async def update_book(book_id: int, data: BookRenameRequest, db: AsyncSession = 
 @router.delete("/books/{book_id}")
 async def delete_book(book_id: int, db: AsyncSession = Depends(get_db)):
     """
-    Deletes a book, its chunks, and vector index.
+    Deletes a book, its chunks, vector index, and Supabase Storage file.
+    Zero orphan files.
     """
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(status_code=404, detail="पुस्तक सापडले नाही.")
 
-    # Remove vector index
+    # 1. Remove from in-memory vector store and PostgreSQL document_chunks table
     vector_store.delete_book_chunks(book_id)
+    await db.execute(delete(DocumentChunk).where(DocumentChunk.book_id == book_id))
+    await db.execute(delete(Page).where(Page.book_id == book_id))
+    await db.execute(delete(Chapter).where(Chapter.book_id == book_id))
 
-    # Remove file from disk
-    if os.path.exists(book.file_path):
+    # 2. Remove file from Supabase Storage
+    if book.storage_path:
+        try:
+            await cloud_storage.delete_file(book.storage_path)
+        except Exception as st_err:
+            logger.warning(f"Failed to delete storage file [{book.storage_path}]: {st_err}")
+
+    # 3. Remove local temp cached copy if present
+    if book.file_path and os.path.exists(book.file_path):
         try:
             os.remove(book.file_path)
         except Exception as e:
-            logger.warning(f"Could not remove PDF file from disk: {e}")
+            logger.warning(f"Could not remove local PDF file: {e}")
 
     await db.delete(book)
     await db.commit()
@@ -387,18 +455,14 @@ async def delete_book(book_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/books/{book_id}/reindex")
 async def reindex_book(book_id: int, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
-    """
-    Re-runs extraction and vector indexing for a book.
-    """
+    """Re-runs extraction and vector indexing for a book."""
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
-    if not book or not os.path.exists(book.file_path):
-        raise HTTPException(status_code=404, detail="पुस्तक किंवा फाईल सापडली नाही.")
+    if not book:
+        raise HTTPException(status_code=404, detail="पुस्तक सापडले नाही.")
 
-    # Clear old chunks from vector store
+    # Clear old chunks from vector store and DB
     vector_store.delete_book_chunks(book_id)
-
-    # Delete existing pages, chapters, chunks in DB
     await db.execute(delete(DocumentChunk).where(DocumentChunk.book_id == book_id))
     await db.execute(delete(Page).where(Page.book_id == book_id))
     await db.execute(delete(Chapter).where(Chapter.book_id == book_id))
@@ -408,5 +472,5 @@ async def reindex_book(book_id: int, background_tasks: BackgroundTasks, db: Asyn
     book.progress_percent = 0.0
     await db.commit()
 
-    background_tasks.add_task(_background_process_pdf, book.id, book.file_path)
+    background_tasks.add_task(_background_process_pdf, book.id, book.file_path, book.storage_path)
     return {"message": "इंडेक्सिंग प्रक्रिया सुरू झाली.", "book_id": book_id}

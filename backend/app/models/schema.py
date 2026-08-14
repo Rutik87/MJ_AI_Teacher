@@ -74,7 +74,8 @@ class Book(Base):
     progress_percent = Column(Float, default=0.0)
     current_page_processing = Column(Integer, default=0)
     total_chunks = Column(Integer, default=0)
-    is_indexed = Column(Boolean, default=False)
+    checksum = Column(String(64), index=True, nullable=True)  # SHA-256 for duplicate detection
+    storage_path = Column(String(500), nullable=True)  # Path in Supabase Storage bucket
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

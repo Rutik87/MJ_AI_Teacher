@@ -21,11 +21,19 @@ from app.api import (
 )
 from app.utils.logger import logger
 
+from app.services.rag.vector_store import vector_store
+from app.services.storage.cloud_storage import cloud_storage
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing MPSC AI Study Assistant database...")
     await init_db()
     logger.info("Database schema initialized successfully.")
+    
+    # Initialize durable cloud storage bucket and restore vector index from DB
+    await cloud_storage.ensure_bucket_exists()
+    vector_store.load_from_db()
+    
     yield
     logger.info("MPSC AI Study Assistant shutting down.")
 

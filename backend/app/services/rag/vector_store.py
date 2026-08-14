@@ -155,6 +155,47 @@ class ModularVectorStore:
         results.sort(key=lambda x: x[1], reverse=True)
         return results[:top_k]
 
+    def load_from_db(self, db_session=None):
+        """
+        Loads all stored document chunks directly from PostgreSQL database.
+        Ensures 100% durable vector persistence across container restarts.
+        """
+        close_session = False
+        if db_session is None:
+            try:
+                from app.database import SyncSessionLocal
+                db_session = SyncSessionLocal()
+                close_session = True
+            except Exception as e:
+                logger.warning(f"Could not open database session for vector store: {e}")
+                return
+
+        try:
+            from app.models.schema import DocumentChunk
+            db_chunks = db_session.query(DocumentChunk).all()
+            if db_chunks:
+                self.chunks = [
+                    {
+                        "chunk_uuid": c.chunk_uuid,
+                        "book_id": c.book_id,
+                        "book_title": c.book_title or "",
+                        "subject_name": c.subject_name or "",
+                        "chapter_title": c.chapter_title or "",
+                        "page_number": c.page_number,
+                        "chunk_index": c.chunk_index,
+                        "text_content": c.text_content,
+                        "char_count": c.char_count
+                    }
+                    for c in db_chunks
+                ]
+                self._rebuild_vocabulary()
+                logger.info(f"Durable Vector Store: Restored {len(self.chunks)} chunks from PostgreSQL database.")
+        except Exception as e:
+            logger.error(f"Failed to load vector chunks from PostgreSQL: {e}")
+        finally:
+            if close_session and db_session:
+                db_session.close()
+
     def _save_to_disk(self):
         try:
             self.storage_file.parent.mkdir(parents=True, exist_ok=True)
@@ -185,3 +226,4 @@ class ModularVectorStore:
                 self.doc_vectors = []
 
 vector_store = ModularVectorStore()
+

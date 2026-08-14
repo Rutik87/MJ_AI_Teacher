@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     PORT: int = 8000
     SUPABASE_CA_CERT_PATH: str = "/app/certs/supabase-ca.crt"
     
+    # Supabase Storage Configuration
+    SUPABASE_URL: str = ""
+    SUPABASE_KEY: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_STORAGE_BUCKET: str = "mpsc-books"
+    
     # Storage Paths
     DATA_PATH: str = str(DATA_DIR)
     BOOKS_PATH: str = str(BOOKS_DIR)
