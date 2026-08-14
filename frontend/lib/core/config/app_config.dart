@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -7,11 +6,12 @@ class AppConfig {
   static const String appVersion = '1.0.0';
   static const String tagline = 'तुमचा वैयक्तिक MPSC शिक्षक';
 
-  // Dart define compile-time override (e.g. --dart-define=API_URL=https://your-cloud-backend.com/api)
+  // Dart define compile-time override (e.g. --dart-define=API_URL=https://mj-ai-teacher.onrender.com/api)
   static const String _compileTimeApiUrl = String.fromEnvironment('API_URL', defaultValue: '');
   static const String _compileTimeEnv = String.fromEnvironment('ENV', defaultValue: 'production');
 
-  static const String defaultProductionUrl = 'https://api.mpscai.com/api';
+  // Official Production HTTPS Backend URL
+  static const String defaultProductionUrl = 'https://mj-ai-teacher.onrender.com/api';
   static const String _prefKeyCustomUrl = 'pref_custom_api_url';
 
   static String _activeUrl = '';
@@ -19,25 +19,29 @@ class AppConfig {
   static bool get isProduction => _compileTimeEnv == 'production' && !kDebugMode;
 
   static Future<void> initialize() async {
+    // 1. Check custom user URL from SharedPreferences
     try {
       final prefs = await SharedPreferences.getInstance();
       final custom = prefs.getString(_prefKeyCustomUrl);
       if (custom != null && custom.trim().isNotEmpty) {
         _activeUrl = custom.trim();
+        if (kDebugMode) {
+          debugPrint('[AppConfig] Resolved API Base URL (Custom Preference): $_activeUrl');
+        }
         return;
       }
     } catch (_) {}
 
+    // 2. Check compile-time --dart-define=API_URL override
     if (_compileTimeApiUrl.isNotEmpty) {
-      _activeUrl = _compileTimeApiUrl;
-    } else if (kIsWeb) {
-      final host = Uri.base.host.isNotEmpty ? Uri.base.host : 'localhost';
-      _activeUrl = 'http://$host:8000/api';
-    } else if (Platform.isAndroid) {
-      // In production release, use cloud HTTPS API; in local debug, use 10.0.2.2 or LAN IP
-      _activeUrl = isProduction ? defaultProductionUrl : 'http://10.0.2.2:8000/api';
+      _activeUrl = _compileTimeApiUrl.trim();
     } else {
-      _activeUrl = isProduction ? defaultProductionUrl : 'http://localhost:8000/api';
+      // 3. Default to production cloud HTTPS backend
+      _activeUrl = defaultProductionUrl;
+    }
+
+    if (kDebugMode) {
+      debugPrint('[AppConfig] Resolved API Base URL: $_activeUrl');
     }
   }
 
@@ -49,6 +53,9 @@ class AppConfig {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefKeyCustomUrl, _activeUrl);
     } catch (_) {}
+    if (kDebugMode) {
+      debugPrint('[AppConfig] Updated API Base URL: $_activeUrl');
+    }
   }
 
   static Future<void> resetToDefaultUrl() async {
