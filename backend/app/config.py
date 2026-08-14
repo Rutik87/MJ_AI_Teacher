@@ -16,11 +16,13 @@ for folder in [DATA_DIR, BOOKS_DIR, EXTRACTED_DIR, EMBEDDINGS_DIR, DB_DIR, AUDIO
     folder.mkdir(parents=True, exist_ok=True)
 
 class Settings(BaseSettings):
+    ENVIRONMENT: str = "development"
     PROJECT_NAME: str = "MPSC AI Study Assistant"
     VERSION: str = "1.0.0"
     API_PREFIX: str = "/api"
     HOST: str = "0.0.0.0"
     PORT: int = 8000
+    SUPABASE_CA_CERT_PATH: str = "/app/certs/supabase-ca.crt"
     
     # Storage Paths
     DATA_PATH: str = str(DATA_DIR)

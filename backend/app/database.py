@@ -14,7 +14,7 @@ def _get_strict_production_ssl_context() -> tuple[any, str]:
     Requires the official Supabase Root CA certificate (downloaded from Supabase Dashboard).
     Enforces ssl.CERT_REQUIRED and check_hostname = True.
     """
-    ca_path = os.getenv("SUPABASE_CA_CERT_PATH", "/app/certs/supabase-ca.crt")
+    ca_path = getattr(settings, "SUPABASE_CA_CERT_PATH", "/app/certs/supabase-ca.crt")
     
     # Local development fallback path
     if not os.path.exists(ca_path):
