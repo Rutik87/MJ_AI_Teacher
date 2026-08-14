@@ -22,7 +22,7 @@ class _BookUploadDialogState extends State<BookUploadDialog> {
 
   Future<void> _pickFile() async {
     try {
-      FilePickerResult? result = await FilePicker.pickFiles(
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf'],
         withData: kIsWeb,
