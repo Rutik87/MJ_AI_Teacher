@@ -8,58 +8,41 @@ from sqlalchemy import create_engine, text
 from app.config import settings
 from app.utils.logger import logger
 
-try:
-    import certifi
-    SYSTEM_CA_BUNDLE = certifi.where()
-except ImportError:
-    SYSTEM_CA_BUNDLE = None
-
-def _get_production_ssl_context() -> tuple[any, str]:
+def _get_strict_production_ssl_context() -> tuple[any, str]:
     """
-    Creates a production-grade SSLContext for PostgreSQL / Supabase Connection Pooler.
-    Uses SUPABASE_CA_CERT_PATH (or certifi CA bundle) with ssl.CERT_REQUIRED validation.
-    Returns: (ssl_setting, description)
+    Creates a strict, production-grade SSLContext for PostgreSQL / Supabase Connection Pooler.
+    Requires the official Supabase Root CA certificate (downloaded from Supabase Dashboard).
+    Enforces ssl.CERT_REQUIRED and check_hostname = True.
     """
     ca_path = os.getenv("SUPABASE_CA_CERT_PATH", "/app/certs/supabase-ca.crt")
     
-    # Local development fallback check
+    # Local development fallback path
     if not os.path.exists(ca_path):
         local_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "certs", "supabase-ca.crt"))
         if os.path.exists(local_path):
             ca_path = local_path
 
-    # Try custom CA bundle first
     if os.path.exists(ca_path):
         try:
             ctx = ssl.create_default_context(cafile=ca_path)
             ctx.verify_mode = ssl.CERT_REQUIRED
-            # Supabase Pooler proxy TLS hostnames (*.pooler.supabase.com) use pooler TLS certificates.
-            # verify_mode = CERT_REQUIRED guarantees strict CA signature validation.
-            ctx.check_hostname = False
-            logger.info(f"Loaded official CA certificate bundle from [{ca_path}] with CERT_REQUIRED validation.")
-            return ctx, f"Verified CA Cert ({os.path.basename(ca_path)})"
+            # Match pooler wildcard certificate (*.pooler.supabase.com)
+            ctx.check_hostname = True
+            logger.info(f"Loaded official Supabase CA certificate from [{ca_path}] with strict verify_mode=CERT_REQUIRED and check_hostname=True.")
+            return ctx, f"Official Supabase CA ({os.path.basename(ca_path)}) - verify_mode=CERT_REQUIRED, check_hostname=True"
         except Exception as e:
-            logger.warning(f"Failed to load CA file from [{ca_path}]: {e}")
+            logger.error(f"Failed to load CA certificate from [{ca_path}]: {e}")
+            raise RuntimeError(f"SSL CA certificate loading failed for [{ca_path}]: {e}") from e
 
-    # Fallback to system / certifi CA bundle
-    try:
-        if SYSTEM_CA_BUNDLE and os.path.exists(SYSTEM_CA_BUNDLE):
-            ctx = ssl.create_default_context(cafile=SYSTEM_CA_BUNDLE)
-            ctx.verify_mode = ssl.CERT_REQUIRED
-            ctx.check_hostname = False
-            logger.info(f"Loaded Certifi CA bundle from [{SYSTEM_CA_BUNDLE}] with CERT_REQUIRED validation.")
-            return ctx, "Certifi System CA Bundle"
-    except Exception as e:
-        logger.warning(f"Error loading system CA bundle: {e}")
-
-    # String "require" for asyncpg TLS (libpq sslmode=require equivalent)
-    return "require", "sslmode=require"
+    # If CA cert is missing in production, string 'require' enables TLS (libpq sslmode=require equivalent)
+    logger.warning(f"CA certificate file not found at [{ca_path}]. Falling back to ssl='require'.")
+    return "require", "ssl='require'"
 
 def _normalize_async_pg_url(raw_url: str) -> tuple[str, dict]:
     """
     Normalizes PostgreSQL URL for asyncpg engine and applies ONE unified SSL configuration.
     Enforces statement_cache_size=0 for Supabase / PgBouncer / Supavisor pooler compatibility.
-    Strips conflicting SSL query parameters from the URL string.
+    Strips all conflicting SSL query parameters from the URL string.
     """
     url = raw_url.strip()
     connect_args = {}
@@ -76,11 +59,11 @@ def _normalize_async_pg_url(raw_url: str) -> tuple[str, dict]:
     # Supabase Connection Pooler (PgBouncer/Supavisor) REQUIRES statement_cache_size=0 for asyncpg
     connect_args["statement_cache_size"] = 0
     
-    ssl_setting, ssl_desc = _get_production_ssl_context()
+    ssl_setting, ssl_desc = _get_strict_production_ssl_context()
     connect_args["ssl"] = ssl_setting
     logger.info(f"Applied SSL Configuration: {ssl_desc}")
 
-    # Clean conflicting query params from URI string to avoid duplication
+    # Clean conflicting query params from URI string to avoid parameter duplication/conflict
     try:
         parsed = urlparse(url)
         query_params = parse_qs(parsed.query)
@@ -200,4 +183,6 @@ async def init_db():
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Database connection established and schema initialized successfully.")
     except Exception as e:
-        logger.error(f"Database initialization warning (Server starting up): {e}")
+        logger.error(f"CRITICAL: Database initialization failed: {e}")
+        if settings.ENVIRONMENT.lower() == "production":
+            raise RuntimeError(f"Production database initialization failed: {e}") from e
