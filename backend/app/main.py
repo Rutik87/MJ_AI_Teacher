@@ -1,0 +1,76 @@
+import os
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from app.config import settings
+from app.database import init_db
+from app.api import (
+    books_router,
+    chat_router,
+    teacher_router,
+    tests_router,
+    revision_router,
+    progress_router,
+    voice_router,
+    settings_router,
+    current_affairs_router,
+    mj_router,
+    sync_router
+)
+from app.utils.logger import logger
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Initializing MPSC AI Study Assistant database...")
+    await init_db()
+    logger.info("Database schema initialized successfully.")
+    yield
+    logger.info("MPSC AI Study Assistant shutting down.")
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION,
+    description="Personal MPSC AI Teacher, PDF Library, and Exam Preparation Platform",
+    lifespan=lifespan
+)
+
+# CORS middleware for mobile, web, and desktop clients
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount Routers
+app.include_router(books_router, prefix=settings.API_PREFIX)
+app.include_router(chat_router, prefix=settings.API_PREFIX)
+app.include_router(teacher_router, prefix=settings.API_PREFIX)
+app.include_router(tests_router, prefix=settings.API_PREFIX)
+app.include_router(revision_router, prefix=settings.API_PREFIX)
+app.include_router(progress_router, prefix=settings.API_PREFIX)
+app.include_router(voice_router, prefix=settings.API_PREFIX)
+app.include_router(settings_router, prefix=settings.API_PREFIX)
+app.include_router(current_affairs_router, prefix=settings.API_PREFIX)
+app.include_router(mj_router, prefix=settings.API_PREFIX)
+app.include_router(sync_router, prefix=settings.API_PREFIX)
+
+@app.get("/")
+async def root():
+    return {
+        "app": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "status": "online",
+        "message": "नमस्कार! MPSC AI Study Assistant API कार्यरत आहे."
+    }
+
+@app.get("/api/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "database": "connected",
+        "version": settings.VERSION
+    }

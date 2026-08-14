@@ -1,0 +1,166 @@
+import 'package:flutter/foundation.dart';
+import 'package:frontend/core/constants/api_endpoints.dart';
+import 'package:frontend/core/network/api_client.dart';
+import 'package:frontend/core/services/audio_service.dart';
+import 'package:frontend/core/services/wake_word_service.dart';
+
+class MJMessage {
+  final String text;
+  final bool isUser;
+  final DateTime timestamp;
+  final String? intent;
+  final List<dynamic> sources;
+
+  MJMessage({
+    required this.text,
+    required this.isUser,
+    required this.timestamp,
+    this.intent,
+    this.sources = const [],
+  });
+}
+
+class MJVoiceProvider extends ChangeNotifier {
+  final List<MJMessage> _messages = [
+    MJMessage(
+      text: "नमस्कार! मी MJ, तुझी personal AI सोबती 😄\nतू मला 'Are MJ' बोलून कधीही हाक मारू शकतोस. आज काय करायचं?",
+      isUser: false,
+      timestamp: DateTime.now(),
+    ),
+  ];
+
+  bool _isLoading = false;
+  String? _lastSpokenText;
+  int? _activeBookId;
+  int? _activeCurrentPage;
+
+  List<MJMessage> get messages => _messages;
+  bool get isLoading => _isLoading;
+  String? get lastSpokenText => _lastSpokenText;
+
+  void setContext({int? bookId, int? currentPage}) {
+    _activeBookId = bookId;
+    _activeCurrentPage = currentPage;
+  }
+
+  Future<void> sendMessage({
+    required String text,
+    required AudioService audioService,
+    required WakeWordService wakeWordService,
+    Function(String action)? onActionEvent,
+  }) async {
+    if (text.trim().isEmpty) return;
+
+    // 1. Interruption check
+    if (wakeWordService.isInterruption(text)) {
+      audioService.stop();
+      wakeWordService.setState(MJVoiceState.idle);
+      _messages.add(MJMessage(
+        text: text,
+        isUser: true,
+        timestamp: DateTime.now(),
+      ));
+      _messages.add(MJMessage(
+        text: "हो थांबले 😊 सांग पुढं काय करायचं?",
+        isUser: false,
+        timestamp: DateTime.now(),
+      ));
+      notifyListeners();
+      return;
+    }
+
+    _messages.add(MJMessage(
+      text: text,
+      isUser: true,
+      timestamp: DateTime.now(),
+    ));
+    _isLoading = true;
+    wakeWordService.setState(MJVoiceState.processing);
+    notifyListeners();
+
+    try {
+      final response = await ApiClient.post(
+        ApiEndpoints.mjConverse,
+        body: {
+          'query': text,
+          'book_id': _activeBookId,
+          'current_page': _activeCurrentPage,
+          'conversation_history': _messages
+              .take(6)
+              .map((m) => {'sender': m.isUser ? 'user' : 'mj', 'text': m.text})
+              .toList(),
+        },
+      );
+
+      if (response.isSuccess && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        final replyText = data['reply_text'] ?? 'हं, बोल ना!';
+        final speechText = data['speech_text'] ?? replyText;
+        final intent = data['intent'] ?? 'general';
+        final action = data['action'] ?? 'continue_chat';
+        final sources = data['sources'] as List? ?? [];
+
+        _messages.add(MJMessage(
+          text: replyText,
+          isUser: false,
+          timestamp: DateTime.now(),
+          intent: intent,
+          sources: sources,
+        ));
+
+        _lastSpokenText = speechText;
+        wakeWordService.setState(MJVoiceState.speaking);
+        wakeWordService.startKeepAliveWindow(durationSeconds: 25);
+        notifyListeners();
+
+        // Speak the clean speech response
+        await audioService.speakText(speechText);
+        wakeWordService.setState(MJVoiceState.listening);
+
+        if (action == 'open_test' && onActionEvent != null) {
+          onActionEvent('open_test');
+        }
+      } else {
+        _fallbackFriendlyReply(text, audioService, wakeWordService);
+      }
+    } catch (e) {
+      debugPrint('MJ Voice Error: $e');
+      _fallbackFriendlyReply(text, audioService, wakeWordService);
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  void _fallbackFriendlyReply(
+    String text,
+    AudioService audioService,
+    WakeWordService wakeWordService,
+  ) {
+    String reply = "अरे काही हरकत नाही! आपण सोप्या भाषेत समजून घेऊया. सांग तुला नेमका कोणता भाग हवाय? 😄";
+    if (wakeWordService.isWakeWord(text)) {
+      reply = "हं बोल ना 😄 MJ इथेच आहे!";
+    }
+
+    _messages.add(MJMessage(
+      text: reply,
+      isUser: false,
+      timestamp: DateTime.now(),
+    ));
+    wakeWordService.setState(MJVoiceState.speaking);
+    notifyListeners();
+
+    audioService.speakText(reply);
+    wakeWordService.startKeepAliveWindow(durationSeconds: 20);
+  }
+
+  void clearConversation() {
+    _messages.clear();
+    _messages.add(MJMessage(
+      text: "हं, नवीन सुरुवात करूया! बोल काय विचारतोयस? 😄",
+      isUser: false,
+      timestamp: DateTime.now(),
+    ));
+    notifyListeners();
+  }
+}

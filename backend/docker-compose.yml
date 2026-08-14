@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  mpsc-ai-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mpsc_ai_cloud_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DATABASE_URL=sqlite:///./data/db/mpsc_study.db
+      - LLM_PROVIDER=gemini
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - EMBEDDING_MODEL=all-MiniLM-L6-v2
+    volumes:
+      - mpsc_data_uploads:/app/data/uploads
+      - mpsc_data_embeddings:/app/data/embeddings
+      - mpsc_data_db:/app/data/db
+      - mpsc_data_audio:/app/data/audio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mpsc_data_uploads:
+  mpsc_data_embeddings:
+  mpsc_data_db:
+  mpsc_data_audio:
