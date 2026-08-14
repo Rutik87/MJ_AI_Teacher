@@ -1,3 +1,4 @@
+import os
 import re
 import ssl
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
@@ -9,34 +10,56 @@ from app.utils.logger import logger
 
 try:
     import certifi
-    CA_BUNDLE_PATH = certifi.where()
+    SYSTEM_CA_BUNDLE = certifi.where()
 except ImportError:
-    CA_BUNDLE_PATH = None
+    SYSTEM_CA_BUNDLE = None
 
-def _get_supabase_pooler_ssl_context() -> ssl.SSLContext:
+def _get_production_ssl_context() -> tuple[any, str]:
     """
-    Creates a production-grade SSLContext for Supabase Connection Pooler (Supavisor).
-    Uses certifi Mozilla CA bundle and configures TLS encryption for pooler TLS proxies.
+    Creates a production-grade SSLContext for PostgreSQL / Supabase Connection Pooler.
+    Uses SUPABASE_CA_CERT_PATH (or certifi CA bundle) with ssl.CERT_REQUIRED validation.
+    Returns: (ssl_setting, description)
     """
+    ca_path = os.getenv("SUPABASE_CA_CERT_PATH", "/app/certs/supabase-ca.crt")
+    
+    # Local development fallback check
+    if not os.path.exists(ca_path):
+        local_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "certs", "supabase-ca.crt"))
+        if os.path.exists(local_path):
+            ca_path = local_path
+
+    # Try custom CA bundle first
+    if os.path.exists(ca_path):
+        try:
+            ctx = ssl.create_default_context(cafile=ca_path)
+            ctx.verify_mode = ssl.CERT_REQUIRED
+            # Supabase Pooler proxy TLS hostnames (*.pooler.supabase.com) use pooler TLS certificates.
+            # verify_mode = CERT_REQUIRED guarantees strict CA signature validation.
+            ctx.check_hostname = False
+            logger.info(f"Loaded official CA certificate bundle from [{ca_path}] with CERT_REQUIRED validation.")
+            return ctx, f"Verified CA Cert ({os.path.basename(ca_path)})"
+        except Exception as e:
+            logger.warning(f"Failed to load CA file from [{ca_path}]: {e}")
+
+    # Fallback to system / certifi CA bundle
     try:
-        if CA_BUNDLE_PATH:
-            ctx = ssl.create_default_context(cafile=CA_BUNDLE_PATH)
-        else:
-            ctx = ssl.create_default_context()
-    except Exception:
-        ctx = ssl.create_default_context()
+        if SYSTEM_CA_BUNDLE and os.path.exists(SYSTEM_CA_BUNDLE):
+            ctx = ssl.create_default_context(cafile=SYSTEM_CA_BUNDLE)
+            ctx.verify_mode = ssl.CERT_REQUIRED
+            ctx.check_hostname = False
+            logger.info(f"Loaded Certifi CA bundle from [{SYSTEM_CA_BUNDLE}] with CERT_REQUIRED validation.")
+            return ctx, "Certifi System CA Bundle"
+    except Exception as e:
+        logger.warning(f"Error loading system CA bundle: {e}")
 
-    # Supabase Connection Pooler (Supavisor) uses TLS proxying.
-    # We maintain full TLS 1.2 / 1.3 encryption while allowing pooler proxy certificate chains.
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    return ctx
+    # String "require" for asyncpg TLS (libpq sslmode=require equivalent)
+    return "require", "sslmode=require"
 
 def _normalize_async_pg_url(raw_url: str) -> tuple[str, dict]:
     """
     Normalizes PostgreSQL URL for asyncpg engine and applies ONE unified SSL configuration.
     Enforces statement_cache_size=0 for Supabase / PgBouncer / Supavisor pooler compatibility.
-    Strips conflicting SSL query parameters from the URL.
+    Strips conflicting SSL query parameters from the URL string.
     """
     url = raw_url.strip()
     connect_args = {}
@@ -52,9 +75,12 @@ def _normalize_async_pg_url(raw_url: str) -> tuple[str, dict]:
 
     # Supabase Connection Pooler (PgBouncer/Supavisor) REQUIRES statement_cache_size=0 for asyncpg
     connect_args["statement_cache_size"] = 0
-    connect_args["ssl"] = _get_supabase_pooler_ssl_context()
+    
+    ssl_setting, ssl_desc = _get_production_ssl_context()
+    connect_args["ssl"] = ssl_setting
+    logger.info(f"Applied SSL Configuration: {ssl_desc}")
 
-    # Clean conflicting SSL query params from URI string
+    # Clean conflicting query params from URI string to avoid duplication
     try:
         parsed = urlparse(url)
         query_params = parse_qs(parsed.query)
@@ -87,7 +113,6 @@ def _normalize_sync_pg_url(raw_url: str) -> str:
     elif url.startswith("postgresql://") and not url.startswith("postgresql+"):
         url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-    # Clean conflicting SSL query params
     try:
         parsed = urlparse(url)
         query_params = parse_qs(parsed.query)
