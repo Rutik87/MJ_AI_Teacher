@@ -69,8 +69,19 @@ async def root():
 
 @app.get("/api/health")
 async def health_check():
+    db_status = "connected"
+    overall_status = "healthy"
+    try:
+        from app.database import async_engine
+        from sqlalchemy import text
+        async with async_engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as e:
+        db_status = f"disconnected ({e})"
+        overall_status = "degraded"
+
     return {
-        "status": "healthy",
-        "database": "connected",
+        "status": overall_status,
+        "database": db_status,
         "version": settings.VERSION
     }
