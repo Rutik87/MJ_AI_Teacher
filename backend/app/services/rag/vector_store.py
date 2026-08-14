@@ -155,24 +155,23 @@ class ModularVectorStore:
         results.sort(key=lambda x: x[1], reverse=True)
         return results[:top_k]
 
-    def load_from_db(self, db_session=None):
+    async def load_from_db(self, db_session=None):
         """
-        Loads all stored document chunks directly from PostgreSQL database.
+        Loads all stored document chunks directly from the shared PostgreSQL database.
         Ensures 100% durable vector persistence across container restarts.
         """
+        from app.models.schema import DocumentChunk
+        from sqlalchemy.future import select
+        from app.database import AsyncSessionLocal
+
         close_session = False
         if db_session is None:
-            try:
-                from app.database import SyncSessionLocal
-                db_session = SyncSessionLocal()
-                close_session = True
-            except Exception as e:
-                logger.warning(f"Could not open database session for vector store: {e}")
-                return
+            db_session = AsyncSessionLocal()
+            close_session = True
 
         try:
-            from app.models.schema import DocumentChunk
-            db_chunks = db_session.query(DocumentChunk).all()
+            result = await db_session.execute(select(DocumentChunk))
+            db_chunks = result.scalars().all()
             if db_chunks:
                 self.chunks = [
                     {
@@ -189,12 +188,19 @@ class ModularVectorStore:
                     for c in db_chunks
                 ]
                 self._rebuild_vocabulary()
-                logger.info(f"Durable Vector Store: Restored {len(self.chunks)} chunks from PostgreSQL database.")
+                logger.info(f"Durable Vector Store: Restored {len(self.chunks)} chunks from shared PostgreSQL database.")
+            else:
+                self.chunks = []
+                self.idf_dict = {}
+                self.doc_vectors = []
+                logger.info("Durable Vector Store: 0 chunks in database (Ready).")
         except Exception as e:
             logger.error(f"Failed to load vector chunks from PostgreSQL: {e}")
+            if getattr(settings, "ENVIRONMENT", "development").lower() == "production":
+                raise RuntimeError(f"Production vector store failed to load from PostgreSQL: {e}") from e
         finally:
             if close_session and db_session:
-                db_session.close()
+                await db_session.close()
 
     def _save_to_disk(self):
         try:

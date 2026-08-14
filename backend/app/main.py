@@ -91,5 +91,7 @@ async def health_check():
     return {
         "status": overall_status,
         "database": db_status,
+        "rag_ready": bool(vector_store is not None and db_status == "connected"),
+        "total_chunks_indexed": len(vector_store.chunks) if vector_store else 0,
         "version": settings.VERSION
     }

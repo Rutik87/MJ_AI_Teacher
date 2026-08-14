@@ -115,11 +115,15 @@ def _normalize_sync_pg_url(raw_url: str) -> str:
 
     return url
 
-# Normalize URLs
-async_db_url, async_connect_args = _normalize_async_pg_url(settings.DATABASE_URL)
-sync_db_url = _normalize_sync_pg_url(settings.SYNC_DATABASE_URL)
+# Normalize URLs - Guarantee sync engine uses PostgreSQL when DATABASE_URL is PostgreSQL
+raw_sync_url = getattr(settings, "SYNC_DATABASE_URL", "")
+if (not raw_sync_url or raw_sync_url.startswith("sqlite")) and not settings.DATABASE_URL.startswith("sqlite"):
+    raw_sync_url = settings.DATABASE_URL
 
-# Async engine for FastAPI endpoints
+async_db_url, async_connect_args = _normalize_async_pg_url(settings.DATABASE_URL)
+sync_db_url = _normalize_sync_pg_url(raw_sync_url)
+
+# Async engine for FastAPI endpoints and vector persistence
 async_engine = create_async_engine(
     async_db_url,
     connect_args=async_connect_args,
@@ -136,7 +140,7 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False
 )
 
-# Sync engine for background workers and sync queries
+# Sync engine for background workers
 sync_engine = create_engine(
     sync_db_url,
     echo=False,
@@ -179,10 +183,13 @@ def _mask_url_for_logs(url: str) -> str:
 async def init_db():
     logger.info(f"Connecting to database [{_mask_url_for_logs(async_db_url)}]...")
     try:
+        # Import schema models to register with Base.metadata before create_all
+        import app.models.schema
         async with async_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        logger.info("Database connection established and schema initialized successfully.")
+        logger.info("Database connection established and all schemas (including document_chunks) initialized successfully.")
     except Exception as e:
         logger.error(f"CRITICAL: Database initialization failed: {e}")
         if settings.ENVIRONMENT.lower() == "production":
             raise RuntimeError(f"Production database initialization failed: {e}") from e
+

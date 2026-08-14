@@ -3,6 +3,9 @@ import hashlib
 import io
 from app.services.storage.cloud_storage import CloudStorageService
 from app.services.rag.vector_store import ModularVectorStore
+from app.database import AsyncSessionLocal, init_db
+from app.models.schema import Book, DocumentChunk, Subject, ProcessingStatus
+from app.config import settings
 
 @pytest.mark.asyncio
 async def test_cloud_storage_local_fallback():
@@ -77,3 +80,45 @@ def test_vector_store_persistence():
     vs.delete_book_chunks(999)
     remaining = [c for c in vs.chunks if c.get("book_id") == 999]
     assert len(remaining) == 0
+
+@pytest.mark.asyncio
+async def test_database_vector_restore():
+    await init_db()
+    
+    async with AsyncSessionLocal() as session:
+        # Create test book & chunk in unified database
+        book = Book(
+            id=777,
+            title="भारतीय राज्यघटना",
+            original_filename="polity.pdf",
+            file_path="/tmp/polity.pdf",
+            subject_name="राज्यशास्त्र",
+            status=ProcessingStatus.COMPLETED
+        )
+        session.add(book)
+        
+        chunk = DocumentChunk(
+            chunk_uuid="chunk_polity_001",
+            book_id=777,
+            book_title="भारतीय राज्यघटना",
+            subject_name="राज्यशास्त्र",
+            chapter_title="मूलभूत हक्क",
+            page_number=21,
+            chunk_index=0,
+            text_content="भारतीय संविधानातील कलम २१ नुसार जीवित व व्यक्तिगत स्वातंत्र्याचा हक्क प्रत्येकाला हमी देतो.",
+            char_count=92
+        )
+        session.add(chunk)
+        await session.commit()
+
+    # Simulate backend restart: create fresh vector store and restore from unified DB
+    vs = ModularVectorStore()
+    await vs.load_from_db()
+    
+    # Verify chunk is restored from database
+    results = vs.search("कलम २१ मूलभूत हक्क", top_k=1)
+    assert len(results) > 0
+    res_chunk, score = results[0]
+    assert res_chunk["book_title"] == "भारतीय राज्यघटना"
+    assert res_chunk["page_number"] == 21
+    assert "कलम २१" in res_chunk["text_content"]
