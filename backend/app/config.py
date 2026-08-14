@@ -33,9 +33,12 @@ class Settings(BaseSettings):
     AUDIO_CACHE_PATH: str = str(AUDIO_DIR)
     
     # AI & RAG Configuration
+    AI_PROVIDER: str = "openrouter"  # openrouter, gemini, local, auto
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = "openrouter/free"
+    GEMINI_API_KEY: str = ""
     AI_API_KEY: str = ""
-    AI_PROVIDER: str = "auto"  # auto, gemini, openai, groq, ollama, offline
-    AI_MODEL: str = "gemini-1.5-flash"
+    AI_MODEL: str = "openrouter/free"
     AI_TEMPERATURE: float = 0.2
     
     # Embeddings

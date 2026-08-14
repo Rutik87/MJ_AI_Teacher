@@ -1,9 +1,9 @@
 import json
 import re
-from typing import List, Dict, Any, Optional
-import httpx
+from typing import List, Dict, Any, Optional, Tuple
 from app.config import settings
 from app.utils.logger import logger
+from app.services.ai.providers import BaseAIProvider, OpenRouterProvider, GeminiProvider, HeuristicLocalProvider
 from app.services.ai.prompts import (
     MPSC_TEACHER_SYSTEM_PROMPT, EXAM_MODE_SYSTEM_PROMPT,
     MCQ_GENERATION_PROMPT, PYQ_ANALYSIS_PROMPT
@@ -11,9 +11,55 @@ from app.services.ai.prompts import (
 
 class LLMProvider:
     """
-    Unified LLM provider supporting Gemini, OpenAI, Groq, Ollama,
-    and a reliable local Marathi knowledge generator fallback.
+    Unified LLM Provider Service for MPSC AI.
+    Primary AI Provider: OpenRouter Free Models Router (openrouter/free) — ₹0 Forced Billing Prevention.
+    Optional Fallback: Gemini Provider.
+    Zero-Key Fallback: Heuristic Local Engine.
     """
+
+    def __init__(self):
+        self._init_providers()
+
+    def _init_providers(self):
+        self.openrouter_provider = OpenRouterProvider()
+        self.gemini_provider = GeminiProvider()
+        self.heuristic_provider = HeuristicLocalProvider()
+
+    def get_active_provider_name(self) -> str:
+        prov_setting = settings.AI_PROVIDER.lower()
+        if prov_setting == "openrouter" or prov_setting == "auto":
+            return self.openrouter_provider.provider_name
+        elif prov_setting == "gemini":
+            return self.gemini_provider.provider_name
+        return self.heuristic_provider.provider_name
+
+    async def _execute_with_provider(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        temperature: float = 0.2,
+        max_tokens: int = 2048
+    ) -> Tuple[Optional[str], str]:
+        prov_setting = settings.AI_PROVIDER.lower()
+
+        # 1. Primary OpenRouter Free Router (If configured or provider is openrouter/auto)
+        if prov_setting in ["openrouter", "auto"] or settings.OPENROUTER_API_KEY:
+            res = await self.openrouter_provider.generate_completion(
+                prompt=prompt, system_prompt=system_prompt, temperature=temperature, max_tokens=max_tokens
+            )
+            if res:
+                return res, self.openrouter_provider.provider_name
+
+        # 2. Optional Gemini Provider (If configured or explicitly selected)
+        if prov_setting in ["gemini", "auto"] or settings.GEMINI_API_KEY:
+            res = await self.gemini_provider.generate_completion(
+                prompt=prompt, system_prompt=system_prompt, temperature=temperature, max_tokens=max_tokens
+            )
+            if res:
+                return res, self.gemini_provider.provider_name
+
+        # 3. Fallback Heuristic Generator (Offline / Free)
+        return None, self.heuristic_provider.provider_name
 
     async def generate_chat_response(
         self,
@@ -24,24 +70,21 @@ class LLMProvider:
         history: Optional[List[Dict[str, str]]] = None
     ) -> str:
         """
-        Generates an AI teacher response in Marathi based on user query and retrieved context.
+        Generates an AI teacher response in Marathi based on user query and retrieved RAG context.
         """
         system_prompt = self._select_system_prompt(mode)
         full_prompt = self._build_prompt(system_prompt, user_message, context_str, history)
 
-        # 1. Try Google Gemini if configured
-        if settings.AI_API_KEY and ("gemini" in settings.AI_PROVIDER.lower() or settings.AI_PROVIDER == "auto"):
-            gemini_ans = await self._call_gemini(full_prompt)
-            if gemini_ans:
-                return self._append_source_footer(gemini_ans, citations)
+        response_text, provider_used = await self._execute_with_provider(
+            prompt=full_prompt,
+            system_prompt=system_prompt,
+            temperature=settings.AI_TEMPERATURE
+        )
 
-        # 2. Try OpenAI / Groq if configured
-        if settings.AI_API_KEY and ("openai" in settings.AI_PROVIDER.lower() or "groq" in settings.AI_PROVIDER.lower()):
-            openai_ans = await self._call_openai_compatible(full_prompt)
-            if openai_ans:
-                return self._append_source_footer(openai_ans, citations)
+        if response_text:
+            return self._append_source_footer(response_text, citations)
 
-        # 3. Fallback Heuristic Generator (Offline & Zero-Key Ready)
+        # Fallback to Heuristic Generator if API keys unavailable or rate limited
         return self._generate_heuristic_response(user_message, context_str, citations, mode)
 
     def _select_system_prompt(self, mode: str) -> str:
@@ -76,47 +119,6 @@ class LLMProvider:
         prompt_parts.append("\nउत्तर (मराठीत):")
         return "\n".join(prompt_parts)
 
-    async def _call_gemini(self, prompt: str) -> Optional[str]:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.AI_MODEL}:generateContent?key={settings.AI_API_KEY}"
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": settings.AI_TEMPERATURE,
-                    "maxOutputTokens": 2048
-                }
-            }
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        content = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                        return content.strip()
-                logger.warning(f"Gemini API returned code {resp.status_code}: {resp.text}")
-        except Exception as e:
-            logger.error(f"Error calling Gemini: {e}")
-        return None
-
-    async def _call_openai_compatible(self, prompt: str) -> Optional[str]:
-        try:
-            endpoint = "https://api.openai.com/v1/chat/completions"
-            headers = {"Authorization": f"Bearer {settings.AI_API_KEY}"}
-            payload = {
-                "model": settings.AI_MODEL if "gpt" in settings.AI_MODEL else "gpt-4o-mini",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": settings.AI_TEMPERATURE
-            }
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(endpoint, json=payload, headers=headers)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    return data["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            logger.error(f"Error calling OpenAI API: {e}")
-        return None
-
     def _generate_heuristic_response(
         self,
         user_message: str,
@@ -134,11 +136,9 @@ class LLMProvider:
                 "पुस्तक अपलोड व इंडेक्स झाल्यानंतर मी त्यातील अचूक प्रकरण आणि पान क्रमांकासह उत्तर देईन."
             )
 
-        # Context exists! Build structured response
         top_citation = citations[0]
         context_clean = top_citation.text_snippet if hasattr(top_citation, 'text_snippet') else ""
         
-        # Split into points
         sentences = [s.strip() for s in re.split(r'[।\.\n]', context_str) if len(s.strip()) > 15]
         key_points = sentences[:5]
         
@@ -150,9 +150,9 @@ class LLMProvider:
             "### २. सविस्तर स्पष्टीकरण व माहिती",
             f"{points_text}\n",
             "### ३. MPSC साठी महत्त्वाचे मुद्दे",
-            f"• **संदर्भित पुस्तक:** {top_citation.book_name}",
-            f"• **प्रकरण:** {top_citation.chapter}",
-            f"• **पान क्रमांक:** {top_citation.page_number}",
+            f"• **संदर्भित पुस्तक:** {getattr(top_citation, 'book_name', 'MPSC Material')}",
+            f"• **प्रकरण:** {getattr(top_citation, 'chapter', 'General')}",
+            f"• **पान क्रमांक:** {getattr(top_citation, 'page_number', 1)}",
             "• **परीक्षेसाठी टीप:** या घटकावर थेट तथ्ये, कालक्रम आणि व्यक्ती विशेष प्रश्न विचारले जातात.\n",
             "### ४. संभाव्य सराव प्रश्न (Practice MCQ)",
             f"**प्रश्न:** खालीलपैकी कोणते विधान/घटक {user_message[:40]}... संदर्भात बरोबर आहे?",

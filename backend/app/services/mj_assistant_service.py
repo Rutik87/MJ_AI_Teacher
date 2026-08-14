@@ -152,15 +152,17 @@ async def process_mj_conversation(
     )
 
     if has_context and citations:
-        answer = llm_provider.generate_answer(
-            prompt=f"मित्रासारख्या सोप्या मराठीत समजावून सांग: {user_query}",
-            context=context_str,
+        answer = await llm_provider.generate_chat_response(
+            user_message=f"मित्रासारख्या सोप्या मराठीत समजावून सांग: {user_query}",
+            context_str=context_str,
+            citations=citations,
             mode="teacher_mode"
         )
     else:
-        answer = llm_provider.generate_answer(
-            prompt=f"सोप्या भाषेत समजावून सांग: {user_query}",
-            context="",
+        answer = await llm_provider.generate_chat_response(
+            user_message=user_query,
+            context_str="",
+            citations=[],
             mode="general_chat"
         )
 

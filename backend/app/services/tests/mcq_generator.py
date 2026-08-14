@@ -46,7 +46,11 @@ class MCQGenerator:
                 f"फक्त JSON Array स्वरूपात उत्तरे द्या:"
             )
             try:
-                raw_json = await llm_provider._call_gemini(prompt) or await llm_provider._call_openai_compatible(prompt)
+                raw_json, provider_used = await llm_provider._execute_with_provider(
+                    prompt=prompt,
+                    system_prompt=MCQ_GENERATION_PROMPT,
+                    temperature=0.3
+                )
                 if raw_json:
                     clean_json = self._clean_json_str(raw_json)
                     data = json.loads(clean_json)
