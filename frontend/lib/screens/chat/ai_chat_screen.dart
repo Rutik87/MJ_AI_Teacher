@@ -32,7 +32,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
     if (text.trim().isEmpty) return;
     soundService.playClick();
     _textController.clear();
-    context.read<ChatProvider>().sendMessage(text.trim());
+    final audioService = context.read<AudioService>();
+    context.read<ChatProvider>().sendMessage(text.trim(), audioService: audioService);
     _scrollToBottom();
   }
 
@@ -64,7 +65,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'AI शिक्षक',
+              'AI शिक्षक (MJ)',
               style: GoogleFonts.notoSansDevanagari(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -72,15 +73,24 @@ class _AIChatScreenState extends State<AIChatScreen> {
               ),
             ),
             Text(
-              'तुमचा वैयक्तिक मार्गदर्शक',
+              audioService.statusMessage ?? 'तुमचा वैयक्तिक मार्गदर्शक (MJ Voice)',
               style: GoogleFonts.notoSansDevanagari(
                 fontSize: 11,
-                color: const Color(0xFF00E5FF),
+                color: audioService.mjState == MJPlaybackState.error
+                    ? Colors.redAccent
+                    : const Color(0xFF00E5FF),
+                fontWeight: audioService.isPlaying ? FontWeight.bold : FontWeight.normal,
               ),
             ),
           ],
         ),
         actions: [
+          if (audioService.isPlaying)
+            IconButton(
+              icon: const Icon(Icons.stop_circle_outlined, color: Color(0xFF00E5FF)),
+              tooltip: 'थांबवा',
+              onPressed: () => audioService.stop(),
+            ),
           BouncingWrapper(
             onTap: () {
               soundService.playClick();
@@ -95,6 +105,50 @@ class _AIChatScreenState extends State<AIChatScreen> {
       ),
       body: Column(
         children: [
+          // Playback status indicator banner when active
+          if (audioService.statusMessage != null && audioService.statusMessage!.isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              color: audioService.mjState == MJPlaybackState.error
+                  ? Colors.red.withOpacity(0.2)
+                  : const Color(0xFF00E5FF).withOpacity(0.12),
+              child: Row(
+                children: [
+                  Icon(
+                    audioService.isPlaying
+                        ? Icons.volume_up
+                        : (audioService.mjState == MJPlaybackState.error ? Icons.error_outline : Icons.graphic_eq),
+                    size: 16,
+                    color: audioService.mjState == MJPlaybackState.error ? Colors.redAccent : const Color(0xFF00E5FF),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      audioService.statusMessage!,
+                      style: GoogleFonts.notoSansDevanagari(
+                        fontSize: 12,
+                        color: audioService.mjState == MJPlaybackState.error ? Colors.redAccent : const Color(0xFF00E5FF),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  if (audioService.isPlaying)
+                    GestureDetector(
+                      onTap: () => audioService.stop(),
+                      child: Text(
+                        'थांबवा',
+                        style: GoogleFonts.notoSansDevanagari(
+                          fontSize: 11,
+                          color: Colors.white70,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
           // Messages List or Default Starter (Screen 3)
           Expanded(
             child: messages.isEmpty
@@ -424,7 +478,11 @@ class _AIChatScreenState extends State<AIChatScreen> {
                         BouncingWrapper(
                           onTap: () {
                             soundService.playClick();
-                            audioService.speakText(message.message);
+                            if (message.audioUrl != null && message.audioUrl!.isNotEmpty) {
+                              audioService.playAudioUrl(message.audioUrl!);
+                            } else {
+                              audioService.speakText(message.message, emotion: 'friendly');
+                            }
                           },
                           child: const Icon(Icons.volume_up, color: Color(0xFF00E5FF), size: 18),
                         ),

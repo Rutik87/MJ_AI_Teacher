@@ -80,6 +80,22 @@ async def serve_voice_lab():
         return FileResponse(lab_html, media_type="text/html")
     return {"error": "Voice Lab interface not found"}
 
+@app.get("/voice/audio/{filename}")
+async def serve_root_audio_file(filename: str):
+    from fastapi import HTTPException
+    safe_name = Path(filename).name
+    file_path = Path(settings.AUDIO_CACHE_PATH) / safe_name
+    if not file_path.exists():
+        file_path = Path("data/audio_cache") / safe_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="ऑडिओ फाईल सापडली नाही.")
+    return FileResponse(
+        path=str(file_path),
+        media_type="audio/mpeg",
+        filename=safe_name,
+        headers={"Accept-Ranges": "bytes"}
+    )
+
 @app.get("/")
 async def root():
     return {

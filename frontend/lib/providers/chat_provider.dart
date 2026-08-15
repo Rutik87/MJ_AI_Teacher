@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:frontend/core/constants/api_endpoints.dart';
 import 'package:frontend/core/network/api_client.dart';
+import 'package:frontend/core/services/audio_service.dart';
 import 'package:frontend/models/chat_message.dart';
 
 class ChatProvider extends ChangeNotifier {
@@ -77,7 +78,11 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> sendMessage(String text) async {
+  Future<void> sendMessage(
+    String text, {
+    AudioService? audioService,
+    bool autoPlay = true,
+  }) async {
     if (text.trim().isEmpty) return;
 
     // Add user message to UI immediately
@@ -110,6 +115,20 @@ class ChatProvider extends ChangeNotifier {
         final aiMsg = ChatMessageModel.fromJson(response.data as Map<String, dynamic>);
         _messages.add(aiMsg);
         fetchSessions(); // update session list
+        notifyListeners();
+
+        // Automatic playback using single authorized MJ voice (mj_primary)
+        if (autoPlay && audioService != null) {
+          try {
+            if (aiMsg.audioUrl != null && aiMsg.audioUrl!.isNotEmpty) {
+              await audioService.playAudioUrl(aiMsg.audioUrl!);
+            } else {
+              await audioService.speakText(aiMsg.message, emotion: 'friendly');
+            }
+          } catch (playbackErr) {
+            debugPrint('[ChatProvider] Auto-play notice: $playbackErr');
+          }
+        }
       } else {
         _errorMessage = response.errorMessage ?? 'AI उत्तरामध्ये त्रुटी आली.';
       }

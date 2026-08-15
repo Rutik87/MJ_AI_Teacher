@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:frontend/core/services/speech_service.dart';
 import 'package:frontend/core/services/sound_service.dart';
+import 'package:frontend/core/services/audio_service.dart';
 import 'package:frontend/providers/chat_provider.dart';
 import 'package:frontend/widgets/bouncing_wrapper.dart';
 import 'package:frontend/widgets/holographic_voice_mic.dart';
@@ -37,9 +38,13 @@ class _VoiceModeScreenState extends State<VoiceModeScreen> {
   void _stopAndSubmit() {
     soundService.playClick();
     final speechService = context.read<SpeechService>();
+    final audioService = context.read<AudioService>();
     speechService.stopListening();
     if (_recognizedQuery.trim().isNotEmpty) {
-      context.read<ChatProvider>().sendMessage(_recognizedQuery.trim());
+      context.read<ChatProvider>().sendMessage(
+        _recognizedQuery.trim(),
+        audioService: audioService,
+      );
     }
     Navigator.of(context).pop();
   }

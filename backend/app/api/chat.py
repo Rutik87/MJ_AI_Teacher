@@ -150,6 +150,19 @@ async def send_chat_message(request: ChatRequest, db: AsyncSession = Depends(get
     answer = result["answer"]
     citations_data = [c.dict() if hasattr(c, 'dict') else c for c in result["citations"]]
 
+    # Pre-render speech in single authorized MJ voice (mj_primary)
+    from app.services.voice_service import voice_service
+    from app.services.mj_assistant_service import clean_text_for_speech
+
+    speech_text = clean_text_for_speech(answer)
+    voice_res = await voice_service.generate_voice(
+        text=speech_text,
+        emotion="explaining" if result.get("citations") else "friendly",
+        speed=0.95
+    )
+    audio_url = voice_res.get("audio_url")
+    has_audio = bool(audio_url)
+
     # Save AI message
     ai_msg = ChatMessage(
         session_id=session_id,
@@ -157,8 +170,8 @@ async def send_chat_message(request: ChatRequest, db: AsyncSession = Depends(get
         message=answer,
         sources=citations_data,
         mode=result.get("mode", "general_chat"),
-        has_audio=False,
-        audio_url=None
+        has_audio=has_audio,
+        audio_url=audio_url
     )
     db.add(ai_msg)
     await db.commit()
