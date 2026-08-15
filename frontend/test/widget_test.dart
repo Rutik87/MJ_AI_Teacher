@@ -16,6 +16,9 @@ import 'package:frontend/core/services/wake_word_service.dart';
 import 'package:frontend/core/services/sync_service.dart';
 import 'package:frontend/core/services/offline_book_service.dart';
 
+import 'package:frontend/core/services/gemini_live_audio_service.dart';
+import 'package:frontend/providers/notes_provider.dart';
+
 void main() {
   testWidgets('MPSC AI Cloud-First Full UI & Services Smoke Test', (WidgetTester tester) async {
     await tester.pumpWidget(
@@ -30,7 +33,9 @@ void main() {
           ChangeNotifierProvider(create: (_) => RevisionProvider()),
           ChangeNotifierProvider(create: (_) => ProgressProvider()),
           ChangeNotifierProvider(create: (_) => CurrentAffairsProvider()),
+          ChangeNotifierProvider(create: (_) => NotesProvider()),
           ChangeNotifierProvider(create: (_) => AudioService()),
+          ChangeNotifierProvider(create: (_) => GeminiLiveAudioService()),
           ChangeNotifierProvider(create: (_) => SpeechService()),
           ChangeNotifierProvider(create: (_) => WakeWordService()),
           ChangeNotifierProvider(create: (_) => MJVoiceProvider()),

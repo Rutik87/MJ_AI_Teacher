@@ -252,6 +252,25 @@ TABLE_COLUMNS_SPEC: Dict[str, List[Tuple[str, str, str, Optional[str], Optional[
         ("explanation_mr", "TEXT", "TEXT", "DEFAULT ''", "DEFAULT ''"),
         ("created_at", "TIMESTAMP", "DATETIME", "DEFAULT CURRENT_TIMESTAMP", "DEFAULT CURRENT_TIMESTAMP"),
     ],
+    "handwritten_notes": [
+        ("id", "SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY", None, None),
+        ("user_id", "INTEGER", "INTEGER", "DEFAULT 1", "DEFAULT 1"),
+        ("book_id", "INTEGER", "INTEGER", "DEFAULT NULL", "DEFAULT NULL"),
+        ("title", "VARCHAR(255)", "VARCHAR(255)", "DEFAULT 'Handwritten Notes'", "DEFAULT 'Handwritten Notes'"),
+        ("status", "VARCHAR(50)", "VARCHAR(50)", "DEFAULT 'pending'", "DEFAULT 'pending'"),
+        ("progress_percent", "DOUBLE PRECISION", "FLOAT", "DEFAULT 0.0", "DEFAULT 0.0"),
+        ("progress_message", "VARCHAR(255)", "VARCHAR(255)", "DEFAULT ''", "DEFAULT ''"),
+        ("page_count", "INTEGER", "INTEGER", "DEFAULT 0", "DEFAULT 0"),
+        ("chapter_count", "INTEGER", "INTEGER", "DEFAULT 0", "DEFAULT 0"),
+        ("content_json", "JSON", "JSON", "DEFAULT '[]'::json", "DEFAULT '[]'"),
+        ("markdown_content", "TEXT", "TEXT", "DEFAULT ''", "DEFAULT ''"),
+        ("pdf_path", "VARCHAR(500)", "VARCHAR(500)", "DEFAULT NULL", "DEFAULT NULL"),
+        ("pdf_url", "VARCHAR(500)", "VARCHAR(500)", "DEFAULT NULL", "DEFAULT NULL"),
+        ("error_message", "TEXT", "TEXT", "DEFAULT NULL", "DEFAULT NULL"),
+        ("generated_at", "TIMESTAMP", "DATETIME", "DEFAULT CURRENT_TIMESTAMP", "DEFAULT CURRENT_TIMESTAMP"),
+        ("created_at", "TIMESTAMP", "DATETIME", "DEFAULT CURRENT_TIMESTAMP", "DEFAULT CURRENT_TIMESTAMP"),
+        ("updated_at", "TIMESTAMP", "DATETIME", "DEFAULT CURRENT_TIMESTAMP", "DEFAULT CURRENT_TIMESTAMP"),
+    ],
 }
 
 async def run_schema_migrations(conn: AsyncConnection):

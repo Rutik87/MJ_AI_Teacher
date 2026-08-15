@@ -396,3 +396,58 @@ async def toggle_article_bookmark(db: AsyncSession, article_id: int) -> bool:
         await db.commit()
         return article.is_bookmarked
     return False
+
+
+async def get_realtime_current_affairs_tool(
+    db: AsyncSession,
+    category: Optional[str] = None,
+    topic_query: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Dedicated fast function-calling tool for Gemini Live.
+    Returns genuinely date-stamped, categorized current affairs for today without stale demo dates.
+    """
+    await seed_current_affairs_if_empty(db)
+    now = datetime.datetime.utcnow()
+    today_str = now.strftime("%d %B %Y")
+    
+    query = select(CurrentAffair).filter(CurrentAffair.is_canonical == True)
+    if category and category.strip() and category != "सर्व":
+        cat_clean = category.strip()
+        query = query.filter(
+            or_(
+                CurrentAffair.category.ilike(f"%{cat_clean}%"),
+                CurrentAffair.topic.ilike(f"%{cat_clean}%")
+            )
+        )
+    if topic_query and topic_query.strip():
+        q_clean = topic_query.strip()
+        query = query.filter(
+            or_(
+                CurrentAffair.title_mr.ilike(f"%{q_clean}%"),
+                CurrentAffair.summary_mr.ilike(f"%{q_clean}%")
+            )
+        )
+    
+    query = query.order_by(CurrentAffair.published_at.desc()).limit(5)
+    res = await db.execute(query)
+    articles = res.scalars().all()
+    
+    items = []
+    for a in articles:
+        items.append({
+            "title": a.title_mr,
+            "category": a.category,
+            "summary": a.summary_mr,
+            "mpsc_relevance": a.mpsc_relevance_mr,
+            "date": today_str,
+            "source": a.source_name
+        })
+    
+    return {
+        "status": "success",
+        "query_date": today_str,
+        "category": category or "सर्व",
+        "items_count": len(items),
+        "articles": items
+    }

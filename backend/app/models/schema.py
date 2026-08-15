@@ -43,6 +43,7 @@ class User(Base):
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
     voice_settings = relationship("VoiceSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
     books = relationship("Book", back_populates="user", cascade="all, delete-orphan")
+    handwritten_notes = relationship("HandwrittenNote", back_populates="user", cascade="all, delete-orphan")
 
 class Subject(Base):
     __tablename__ = "subjects"
@@ -92,6 +93,7 @@ class Book(Base):
     chapters = relationship("Chapter", back_populates="book", cascade="all, delete-orphan")
     pages = relationship("Page", back_populates="book", cascade="all, delete-orphan")
     chunks = relationship("DocumentChunk", back_populates="book", cascade="all, delete-orphan")
+    handwritten_notes = relationship("HandwrittenNote", back_populates="book", cascade="all, delete-orphan", uselist=False)
 
 class Chapter(Base):
     __tablename__ = "chapters"
@@ -354,3 +356,26 @@ class CurrentAffairMCQ(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     article = relationship("CurrentAffair", back_populates="mcqs")
+
+class HandwrittenNote(Base):
+    __tablename__ = "handwritten_notes"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    book_id = Column(Integer, ForeignKey("books.id"), nullable=False, unique=True, index=True)
+    title = Column(String(255), nullable=False)
+    status = Column(String(50), default="pending", index=True)  # pending, reading, analyzing, formatting, completed, failed
+    progress_percent = Column(Float, default=0.0)
+    progress_message = Column(String(255), default="तयार करण्याची वाट पाहत आहे...")
+    page_count = Column(Integer, default=0)
+    chapter_count = Column(Integer, default=0)
+    content_json = Column(JSON, default=list)  # List of chapter note dictionaries
+    markdown_content = Column(Text, default="")
+    pdf_path = Column(String(500), nullable=True)
+    pdf_url = Column(String(500), nullable=True)
+    error_message = Column(Text, nullable=True)
+    generated_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", back_populates="handwritten_notes")
+    book = relationship("Book", back_populates="handwritten_notes")

@@ -47,10 +47,18 @@ class MJVoiceProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get lastSpokenText => _lastSpokenText;
   String? get currentMode => _currentMode;
+  int? get activeBookId => _activeBookId;
+  int? get activeCurrentPage => _activeCurrentPage;
+
+  void addMessage(MJMessage msg) {
+    _messages.add(msg);
+    notifyListeners();
+  }
 
   void setContext({int? bookId, int? currentPage}) {
     _activeBookId = bookId;
     _activeCurrentPage = currentPage;
+    notifyListeners();
   }
 
   void setMode(String mode) {

@@ -30,7 +30,9 @@ import 'package:frontend/core/services/offline_book_service.dart';
 import 'package:frontend/core/services/wake_word_service.dart';
 import 'package:frontend/providers/mj_voice_provider.dart';
 import 'package:frontend/screens/mj/mj_assistant_screen.dart';
+import 'package:frontend/core/services/gemini_live_audio_service.dart';
 import 'package:frontend/providers/current_affairs_provider.dart';
+import 'package:frontend/providers/notes_provider.dart';
 import 'package:frontend/screens/current_affairs/current_affairs_screen.dart';
 
 void main() async {
@@ -49,7 +51,9 @@ void main() async {
         ChangeNotifierProvider(create: (_) => RevisionProvider()),
         ChangeNotifierProvider(create: (_) => ProgressProvider()),
         ChangeNotifierProvider(create: (_) => CurrentAffairsProvider()),
+        ChangeNotifierProvider(create: (_) => NotesProvider()),
         ChangeNotifierProvider(create: (_) => AudioService()),
+        ChangeNotifierProvider(create: (_) => GeminiLiveAudioService()),
         ChangeNotifierProvider(create: (_) => SpeechService()),
         ChangeNotifierProvider(create: (_) => WakeWordService()),
         ChangeNotifierProvider(create: (_) => MJVoiceProvider()),

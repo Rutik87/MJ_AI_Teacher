@@ -8,6 +8,7 @@ import 'package:frontend/providers/books_provider.dart';
 import 'package:frontend/widgets/bouncing_wrapper.dart';
 import 'package:frontend/providers/mj_voice_provider.dart';
 import 'package:frontend/screens/mj/mj_assistant_screen.dart';
+import 'package:frontend/screens/notes/handwritten_notes_screen.dart';
 
 class PDFReaderScreen extends StatefulWidget {
   final BookModel book;
@@ -206,9 +207,23 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
                     },
                   ),
                   _buildToolbarItem(
+                    icon: Icons.edit_note,
+                    label: 'Notes',
+                    isSpecial: true,
+                    onTap: () {
+                      soundService.playBubble();
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (ctx) => HandwrittenNotesScreen(
+                          bookId: widget.book.id,
+                          bookTitle: widget.book.title,
+                        ),
+                      ));
+                    },
+                  ),
+                  _buildToolbarItem(
                     icon: Icons.psychology,
                     label: 'AI ला विचारा',
-                    isSpecial: true,
+                    isSpecial: false,
                     onTap: () {
                       soundService.playBubble();
                       final mjProv = context.read<MJVoiceProvider>();

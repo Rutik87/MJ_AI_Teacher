@@ -61,10 +61,28 @@ class Settings(BaseSettings):
     TTS_PROVIDER: str = "gtts"  # gtts, edge_tts, custom
     TTS_DEFAULT_LANG: str = "mr"  # Marathi
     
+    # Gemini Live Realtime Multimodal Settings
+    GEMINI_LIVE_MODEL: str = os.getenv("GEMINI_LIVE_MODEL", "gemini-3.1-flash-live-preview")
+    GEMINI_LIVE_VOICE: str = os.getenv("GEMINI_LIVE_VOICE", "Aoede")
+    
     # Security
     MAX_UPLOAD_SIZE_MB: int = 150
     ALLOWED_EXTENSIONS: list[str] = [".pdf", ".txt"]
 
     model_config = {"env_file": ".env", "extra": "allow"}
 
+SUPPORTED_GEMINI_LIVE_VOICES = [
+    "Aoede", "Kore", "Leda", "Zephyr", "Puck", "Charon", "Fenrir", "Orus"
+]
+
+def validate_gemini_live_voice(voice_name: str) -> str:
+    """Validates that the configured voice is an official Google Gemini Live prebuilt voice."""
+    if voice_name not in SUPPORTED_GEMINI_LIVE_VOICES:
+        raise ValueError(
+            f"अवैध Gemini Live voice: '{voice_name}'. "
+            f"उपलब्ध अधिकृत व्हॉइसेस: {', '.join(SUPPORTED_GEMINI_LIVE_VOICES)}"
+        )
+    return voice_name
+
 settings = Settings()
+validate_gemini_live_voice(settings.GEMINI_LIVE_VOICE)

@@ -17,7 +17,9 @@ from app.api import (
     settings_router,
     current_affairs_router,
     mj_router,
-    sync_router
+    sync_router,
+    notes_router,
+    gemini_live_ws_router
 )
 from app.utils.logger import logger
 
@@ -65,6 +67,8 @@ app.include_router(settings_router, prefix=settings.API_PREFIX)
 app.include_router(current_affairs_router, prefix=settings.API_PREFIX)
 app.include_router(mj_router, prefix=settings.API_PREFIX)
 app.include_router(sync_router, prefix=settings.API_PREFIX)
+app.include_router(notes_router, prefix=settings.API_PREFIX)
+app.include_router(gemini_live_ws_router, prefix=settings.API_PREFIX)
 
 # Mount Voice Cloning Evaluation Lab
 from voice_lab.lab_server import router as voice_lab_router

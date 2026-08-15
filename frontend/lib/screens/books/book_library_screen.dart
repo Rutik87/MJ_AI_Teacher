@@ -10,6 +10,7 @@ import 'package:frontend/providers/progress_provider.dart';
 import 'package:frontend/widgets/bouncing_wrapper.dart';
 import 'package:frontend/screens/books/book_upload_dialog.dart';
 import 'package:frontend/screens/books/pdf_reader_screen.dart';
+import 'package:frontend/screens/notes/handwritten_notes_screen.dart';
 
 class BookLibraryScreen extends StatefulWidget {
   const BookLibraryScreen({super.key});
@@ -523,6 +524,26 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
                       ),
                       Row(
                         children: [
+                          BouncingWrapper(
+                            onTap: () {
+                              soundService.playBubble();
+                              Navigator.of(context).push(MaterialPageRoute(
+                                builder: (ctx) => HandwrittenNotesScreen(
+                                  bookId: book.id,
+                                  bookTitle: book.title,
+                                ),
+                              ));
+                            },
+                            child: const Tooltip(
+                              message: 'Handwritten Notes बनवा / पहा',
+                              child: Icon(
+                                Icons.edit_note,
+                                color: Color(0xFF00E5FF),
+                                size: 21,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
                           BouncingWrapper(
                             onTap: () {
                               if (isDownloaded) {

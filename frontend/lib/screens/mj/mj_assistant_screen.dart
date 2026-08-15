@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:frontend/core/services/audio_service.dart';
-import 'package:frontend/core/services/speech_service.dart';
+import 'package:frontend/core/services/gemini_live_audio_service.dart';
 import 'package:frontend/core/services/sound_service.dart';
 import 'package:frontend/core/services/wake_word_service.dart';
 import 'package:frontend/providers/mj_voice_provider.dart';
@@ -21,7 +20,20 @@ class MJAssistantScreen extends StatefulWidget {
 class _MJAssistantScreenState extends State<MJAssistantScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  String _recognizedText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (WidgetsBinding.instance.runtimeType.toString().contains('Test')) {
+        return;
+      }
+      final liveService = context.read<GeminiLiveAudioService>();
+      final mjProv = context.read<MJVoiceProvider>();
+      liveService.connect(bookId: mjProv.activeBookId);
+    });
+  }
 
   @override
   void dispose() {
@@ -42,87 +54,77 @@ class _MJAssistantScreenState extends State<MJAssistantScreen> {
     });
   }
 
-  void _startVoiceListening() {
-    soundService.playBubble();
-    final wakeService = context.read<WakeWordService>();
-    final speechService = context.read<SpeechService>();
-    final mjProv = context.read<MJVoiceProvider>();
-    final audioService = context.read<AudioService>();
-
-    wakeService.setState(MJVoiceState.listening);
-
-    speechService.startListening(onResult: (spoken) {
-      if (mounted) {
-        setState(() => _recognizedText = spoken);
-      }
-      if (spoken.trim().isNotEmpty) {
-        // Debounce submit or full query
-        Future.delayed(const Duration(milliseconds: 1400), () {
-          if (mounted && _recognizedText == spoken && spoken.trim().isNotEmpty) {
-            speechService.stopListening();
-            _submitMessage(spoken.trim());
-          }
-        });
-      }
-    });
-  }
-
-  void _stopListeningAndSpeaking() {
-    soundService.playClick();
-    final wakeService = context.read<WakeWordService>();
-    final speechService = context.read<SpeechService>();
-    final audioService = context.read<AudioService>();
-
-    speechService.stopListening();
-    audioService.stop();
-    wakeService.resetKeepAlive();
-  }
-
-  void _submitMessage(String query) {
+  void _submitTextMessage(String query) {
     if (query.trim().isEmpty) return;
+    final liveService = context.read<GeminiLiveAudioService>();
     final mjProv = context.read<MJVoiceProvider>();
-    final audioService = context.read<AudioService>();
-    final wakeService = context.read<WakeWordService>();
 
-    setState(() => _recognizedText = '');
     _textController.clear();
+    liveService.sendText(query.trim());
 
-    mjProv.sendMessage(
+    mjProv.addMessage(MJMessage(
       text: query.trim(),
-      audioService: audioService,
-      wakeWordService: wakeService,
-      onActionEvent: (action) {
-        if (action == 'open_test' && widget.onNavigateTab != null) {
-          widget.onNavigateTab!(3); // Go to Test
-        }
-      },
-    );
+      isUser: true,
+      timestamp: DateTime.now(),
+    ));
+
     _scrollToBottom();
   }
 
   @override
   Widget build(BuildContext context) {
+    final liveService = context.watch<GeminiLiveAudioService>();
     final mjProv = context.watch<MJVoiceProvider>();
-    final wakeService = context.watch<WakeWordService>();
-    final audioService = context.watch<AudioService>();
 
     String statusText;
-    switch (wakeService.state) {
-      case MJVoiceState.listening:
-        statusText = _recognizedText.isNotEmpty ? _recognizedText : "ऐकतेय... बोला! 🎙️";
+    Color statusColor;
+
+    switch (liveService.state) {
+      case GeminiLiveState.connecting:
+        statusText = "Gemini Live शी जोडत आहे...";
+        statusColor = const Color(0xFFFFB300);
         break;
-      case MJVoiceState.processing:
-        statusText = "एक सेकंद... समजून घेतेय 💭";
+      case GeminiLiveState.listening:
+        statusText = liveService.liveTranscript.isNotEmpty
+            ? liveService.liveTranscript
+            : "ऐकत आहे... बोला! 🎙️";
+        statusColor = const Color(0xFF00E5FF);
         break;
-      case MJVoiceState.speaking:
-        statusText = "सांगतेय... 🔊";
+      case GeminiLiveState.speaking:
+        statusText = "MJ बोलत आहे... 🔊";
+        statusColor = const Color(0xFF00E676);
         break;
-      case MJVoiceState.stopped:
-        statusText = "थांबले 😊";
+      case GeminiLiveState.interrupted:
+        statusText = "थांबले! ऐकत आहे... 😊";
+        statusColor = const Color(0xFFE040FB);
         break;
-      case MJVoiceState.idle:
+      case GeminiLiveState.error:
+        statusText = liveService.errorMessage ?? "कनेक्शन त्रुटी आली.";
+        statusColor = Colors.redAccent;
+        break;
+      case GeminiLiveState.disconnected:
       default:
-        statusText = "बोल ना... 'Are MJ' बोलून सुरू करा 😄";
+        statusText = "पुन्हा जोडण्यासाठी टॅप करा 🔄";
+        statusColor = Colors.white60;
+        break;
+    }
+
+    MJVoiceState orbState;
+    switch (liveService.state) {
+      case GeminiLiveState.listening:
+        orbState = MJVoiceState.listening;
+        break;
+      case GeminiLiveState.speaking:
+        orbState = MJVoiceState.speaking;
+        break;
+      case GeminiLiveState.connecting:
+        orbState = MJVoiceState.processing;
+        break;
+      case GeminiLiveState.interrupted:
+        orbState = MJVoiceState.stopped;
+        break;
+      default:
+        orbState = MJVoiceState.idle;
         break;
     }
 
@@ -143,282 +145,215 @@ class _MJAssistantScreenState extends State<MJAssistantScreen> {
           },
           child: const Icon(Icons.arrow_back, color: Colors.white),
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
           children: [
-            Text(
-              'MJ',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                letterSpacing: 1.0,
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: liveService.isConnected ? const Color(0xFF00E676) : Colors.amber,
               ),
             ),
-            Text(
-              'तुझी personal AI assistant',
-              style: GoogleFonts.notoSansDevanagari(
-                fontSize: 11,
-                color: const Color(0xFF00E5FF),
-              ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'MJ Live Assistant',
+                  style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                Text(
+                  'Gemini 3.1 Live • Aoede Voice',
+                  style: GoogleFonts.poppins(fontSize: 10, color: const Color(0xFF00E5FF)),
+                ),
+              ],
             ),
           ],
         ),
         actions: [
-          if (wakeService.isInActiveSession)
-            Container(
-              margin: const EdgeInsets.only(right: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF00E676).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF00E676).withOpacity(0.5)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.bolt, color: Color(0xFF00E676), size: 14),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${wakeService.activeSecondsRemaining}s',
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF00E676),
-                    ),
-                  ),
-                ],
-              ),
+          IconButton(
+            icon: Icon(
+              liveService.isConnected ? Icons.cloud_done : Icons.cloud_off,
+              color: liveService.isConnected ? const Color(0xFF00E676) : Colors.white38,
+              size: 20,
             ),
-          BouncingWrapper(
-            onTap: () => mjProv.clearConversation(),
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 14),
-              child: Icon(Icons.restart_alt, color: Colors.white70, size: 22),
-            ),
+            onPressed: () {
+              if (!liveService.isConnected) {
+                liveService.connect();
+              }
+            },
           ),
         ],
       ),
       body: Column(
         children: [
-          // 1. Center Floating MJ Orb & Status Subtitle
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Column(
-              children: [
-                MJHologramOrb(
-                  size: 140,
-                  state: wakeService.state,
-                  onTap: _startVoiceListening,
-                ),
-                const SizedBox(height: 12),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: Text(
-                    statusText,
-                    key: ValueKey(statusText),
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.notoSansDevanagari(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: wakeService.state == MJVoiceState.listening
-                          ? const Color(0xFF00E5FF)
-                          : Colors.white70,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          const SizedBox(height: 10),
 
-          // 2. Multi-turn Speech Conversation Area
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              itemCount: mjProv.messages.length,
-              itemBuilder: (context, index) {
-                final msg = mjProv.messages[index];
-                return _buildMJChatBubble(msg, audioService);
+          // Central Audio-Reactive Hologram Orb
+          Center(
+            child: MJHologramOrb(
+              size: 160,
+              state: orbState,
+              onTap: () {
+                soundService.playBubble();
+                if (liveService.isConnected) {
+                  liveService.startMicrophone();
+                } else {
+                  liveService.connect();
+                }
               },
             ),
           ),
 
-          // 3. Quick Suggestions Strip
+          const SizedBox(height: 12),
+
+          // Live State Indicator Pill
           Container(
-            height: 38,
-            margin: const EdgeInsets.only(bottom: 6),
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: statusColor.withOpacity(0.4)),
+            ),
+            child: Text(
+              statusText,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.notoSansDevanagari(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: statusColor,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Live Transcript & Conversation History
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              itemCount: mjProv.messages.length + (liveService.assistantTranscript.isNotEmpty ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == mjProv.messages.length && liveService.assistantTranscript.isNotEmpty) {
+                  // Live streaming assistant bubble
+                  return _buildMessageBubble(
+                    MJMessage(
+                      text: liveService.assistantTranscript,
+                      isUser: false,
+                      timestamp: DateTime.now(),
+                    ),
+                    isLive: true,
+                  );
+                }
+
+                final msg = mjProv.messages[index];
+                return _buildMessageBubble(msg);
+              },
+            ),
+          ),
+
+          // Bottom Controls & Input Bar
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0A0E17),
+              border: Border(top: BorderSide(color: Colors.white.withOpacity(0.06))),
+            ),
+            child: Row(
               children: [
-                _buildPromptChip('Are MJ, आज काय अभ्यास करू?'),
-                _buildPromptChip('1857 चा उठाव समजाव'),
-                _buildPromptChip('आजचा मूड नाहीये'),
-                _buildPromptChip('चालू घडामोडी सांग'),
+                // Instant Barge-In / Stop Button
+                BouncingWrapper(
+                  onTap: () {
+                    soundService.playClick();
+                    liveService.connect();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.08),
+                    ),
+                    child: const Icon(Icons.stop_circle_outlined, color: Colors.redAccent, size: 22),
+                  ),
+                ),
+                const SizedBox(width: 10),
+
+                // Text input box
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF141C2B),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    ),
+                    child: TextField(
+                      controller: _textController,
+                      style: GoogleFonts.notoSansDevanagari(fontSize: 13, color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'मराठीत किंवा Roman मध्ये लिहा...',
+                        hintStyle: GoogleFonts.notoSansDevanagari(fontSize: 12, color: Colors.white38),
+                        border: InputBorder.none,
+                      ),
+                      onSubmitted: _submitTextMessage,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+
+                // Send Button
+                BouncingWrapper(
+                  isBubbleSound: true,
+                  onTap: () => _submitTextMessage(_textController.text),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(colors: [Color(0xFF00E5FF), Color(0xFF7B1FA2)]),
+                    ),
+                    child: const Icon(Icons.send, color: Colors.white, size: 18),
+                  ),
+                ),
               ],
             ),
           ),
-
-          // 4. Floating Voice Action Bar (Mic, Text input, Stop button)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0A0E17).withOpacity(0.95),
-              border: Border(top: BorderSide(color: Colors.white.withOpacity(0.08))),
-            ),
-            child: SafeArea(
-              top: false,
-              child: Row(
-                children: [
-                  // Stop Button
-                  BouncingWrapper(
-                    onTap: _stopListeningAndSpeaking,
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white10,
-                      ),
-                      child: const Icon(Icons.stop, color: Color(0xFFFF5252), size: 20),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-
-                  // Text input
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF141C2B),
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: Colors.white12),
-                      ),
-                      child: TextField(
-                        controller: _textController,
-                        style: GoogleFonts.notoSansDevanagari(color: Colors.white, fontSize: 13),
-                        decoration: InputDecoration(
-                          hintText: 'MJ ला काहीही विचार...',
-                          hintStyle: GoogleFonts.notoSansDevanagari(color: Colors.white38, fontSize: 12),
-                          border: InputBorder.none,
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                        ),
-                        onSubmitted: _submitMessage,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-
-                  // Giant Voice Mic Button
-                  BouncingWrapper(
-                    isBubbleSound: true,
-                    onTap: () {
-                      if (wakeService.state == MJVoiceState.listening) {
-                        _stopListeningAndSpeaking();
-                      } else {
-                        _startVoiceListening();
-                      }
-                    },
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF00E5FF), Color(0xFFD500F9)],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF00E5FF).withOpacity(0.5),
-                            blurRadius: 12,
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        wakeService.state == MJVoiceState.listening ? Icons.graphic_eq : Icons.mic,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildPromptChip(String text) {
-    return BouncingWrapper(
-      onTap: () => _submitMessage(text),
+  Widget _buildMessageBubble(MJMessage msg, {bool isLive = false}) {
+    return Align(
+      alignment: msg.isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        constraints: const BoxConstraints(maxWidth: 290),
         decoration: BoxDecoration(
-          color: const Color(0xFF0A0E17),
+          color: msg.isUser
+              ? const Color(0xFF1A3B66)
+              : isLive
+                  ? const Color(0xFF16253B)
+                  : const Color(0xFF121824),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.3)),
+          border: Border.all(
+            color: msg.isUser
+                ? const Color(0xFF00E5FF).withOpacity(0.3)
+                : isLive
+                    ? const Color(0xFF00E676).withOpacity(0.4)
+                    : Colors.white.withOpacity(0.08),
+          ),
         ),
         child: Text(
-          text,
-          style: GoogleFonts.notoSansDevanagari(fontSize: 11, color: const Color(0xFF00E5FF)),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMJChatBubble(MJMessage msg, AudioService audioService) {
-    final isUser = msg.isUser;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!isUser) ...[
-            Container(
-              width: 30,
-              height: 30,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(colors: [Color(0xFF00E5FF), Color(0xFFD500F9)]),
-              ),
-              child: const Center(
-                child: Text('MJ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isUser ? const Color(0xFF651FFF).withOpacity(0.85) : const Color(0xFF0D1424),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: isUser ? const Color(0xFF7B1FA2) : const Color(0xFF00E5FF).withOpacity(0.25),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    msg.text,
-                    style: GoogleFonts.notoSansDevanagari(
-                      fontSize: 13,
-                      height: 1.45,
-                      color: Colors.white.withOpacity(0.95),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          msg.text,
+          style: GoogleFonts.notoSansDevanagari(
+            fontSize: 13,
+            color: Colors.white.withOpacity(0.95),
+            height: 1.4,
           ),
-        ],
+        ),
       ),
     );
   }

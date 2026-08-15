@@ -43,4 +43,10 @@ class ApiEndpoints {
   static String currentAffairBookmark(int id) => '$baseUrl/current-affairs/$id/bookmark';
 
   static String get mjConverse => '$baseUrl/mj/converse';
+
+  static String notesGenerate(int bookId) => '$baseUrl/notes/generate/$bookId';
+  static String notesStatus(int bookId) => '$baseUrl/notes/$bookId';
+  static String notesDownload(int bookId) => '$baseUrl/notes/$bookId/download';
+  static String notesMarkdown(int bookId) => '$baseUrl/notes/$bookId/markdown';
+  static String notesDelete(int bookId) => '$baseUrl/notes/$bookId';
 }
