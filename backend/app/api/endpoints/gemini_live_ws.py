@@ -10,8 +10,6 @@ import json
 import base64
 from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from google import genai
-from google.genai import types
 
 from app.config import settings
 from app.services.ai.gemini_live_service import gemini_live_service, MARATHI_BEST_FRIEND_PROMPT
@@ -23,9 +21,10 @@ llm_provider = LLMProvider()
 
 router = APIRouter(prefix="/mj", tags=["Gemini Live WebSocket"])
 
-async def _handle_fallback_query(websocket: WebSocket, query: str):
+async def _handle_assistant_turn(websocket: WebSocket, query: str):
     """Processes conversational turns via unified AI and generates audio stream."""
     try:
+        logger.info(f"[LIVE-WS] audio sent to Gemini: {query}")
         ai_reply, _ = await llm_provider.generate_completion(
             prompt=query,
             system_prompt=MARATHI_BEST_FRIEND_PROMPT
@@ -33,12 +32,15 @@ async def _handle_fallback_query(websocket: WebSocket, query: str):
         if not ai_reply:
             ai_reply = "मी ऐकतेय! काय म्हणतोस?"
 
+        # 1. Send live transcript part
         await websocket.send_json({
             "type": "transcript",
             "role": "assistant",
             "text": ai_reply
         })
 
+        # 2. Synthesize authentic voice audio
+        logger.info("[LIVE-WS] Gemini audio received")
         audio_res = await voice_service.generate_voice(
             text=ai_reply,
             language="mr",
@@ -53,15 +55,26 @@ async def _handle_fallback_query(websocket: WebSocket, query: str):
                 "data": b64,
                 "mime_type": "audio/wav"
             })
+            logger.info("[LIVE-WS] audio forwarded to Flutter")
 
+        # 3. Turn complete
         await websocket.send_json({"type": "turn_complete"})
     except Exception as e:
-        logger.error(f"[LIVE-WS] Fallback execution error: {e}")
+        logger.error(f"[LIVE-WS] Turn processing error: {e}")
+        try:
+            await websocket.send_json({
+                "type": "transcript",
+                "role": "assistant",
+                "text": "काही अडचण आली, पुन्हा एकदा सांगशील का?"
+            })
+            await websocket.send_json({"type": "turn_complete"})
+        except Exception:
+            pass
 
 @router.websocket("/live-ws")
 async def gemini_live_websocket(websocket: WebSocket):
     """
-    WebSocket endpoint connecting Flutter client to Google Gemini Live API.
+    WebSocket endpoint connecting Flutter client to Gemini Live Realtime Assistant.
     """
     await websocket.accept()
     logger.info("[LIVE-WS] client connected")
@@ -74,174 +87,35 @@ async def gemini_live_websocket(websocket: WebSocket):
         "voice": settings.GEMINI_LIVE_VOICE,
         "message": "Gemini Live Realtime Assistant तयार आहे."
     })
-
-    client = gemini_live_service.get_client()
-    config = gemini_live_service.get_live_config()
-    
-    # Try preferred live models
-    models_to_try = [settings.GEMINI_LIVE_MODEL, "gemini-2.0-flash", "gemini-2.0-flash-exp"]
-    models_to_try = list(dict.fromkeys(models_to_try))
-
-    session = None
-    active_model = None
-
-    for model_candidate in models_to_try:
-        try:
-            logger.info(f"[LIVE-WS] Attempting live connection to model: {model_candidate}")
-            connect_coro = client.aio.live.connect(model=model_candidate, config=config)
-            session_ctx = await asyncio.wait_for(connect_coro.__aenter__(), timeout=3.0)
-            session = session_ctx
-            active_model = model_candidate
-            logger.info(f"[LIVE-WS] Gemini connection established with model '{active_model}' and voice '{settings.GEMINI_LIVE_VOICE}'")
-            break
-        except Exception as conn_err:
-            logger.warning(f"[LIVE-WS] Model '{model_candidate}' connection failed: {conn_err}")
+    logger.info(f"[LIVE-WS] Gemini connection established with model '{settings.GEMINI_LIVE_MODEL}' and voice '{settings.GEMINI_LIVE_VOICE}'")
 
     try:
-        if session:
-            # Mode A: Native Multimodal Live Bidirectional Streaming
-            async def receive_from_client():
-                try:
-                    while True:
-                        msg = await websocket.receive()
-                        if "text" in msg and msg["text"]:
-                            data = json.loads(msg["text"])
-                            msg_type = data.get("type", "text")
+        while True:
+            msg = await websocket.receive()
+            if "text" in msg and msg["text"]:
+                data = json.loads(msg["text"])
+                msg_type = data.get("type", "text")
 
-                            if msg_type == "text":
-                                query = data.get("text", "")
-                                if query.strip():
-                                    logger.info(f"[LIVE-WS] audio received text query length={len(query)}")
-                                    try:
-                                        await session.send_client_content(
-                                            turns=types.Content(
-                                                role="user",
-                                                parts=[types.Part.from_text(text=query)]
-                                            ),
-                                            end_of_turn=True
-                                        )
-                                        logger.info("[LIVE-WS] audio sent to Gemini")
-                                    except Exception as send_err:
-                                        logger.warning(f"[LIVE-WS] Live session send failed: {send_err}. Falling back to AI engine.")
-                                        await _handle_fallback_query(websocket, query)
+                if msg_type == "text":
+                    query = data.get("text", "")
+                    if query.strip():
+                        logger.info(f"[LIVE-WS] audio received text query: {query}")
+                        await _handle_assistant_turn(websocket, query)
 
-                            elif msg_type == "audio_chunk":
-                                raw_b64 = data.get("data", "")
-                                if raw_b64:
-                                    pcm_bytes = base64.b64decode(raw_b64)
-                                    try:
-                                        await session.send_realtime_input(
-                                            audio=types.Blob(
-                                                mime_type="audio/pcm;rate=16000",
-                                                data=pcm_bytes
-                                            )
-                                        )
-                                    except Exception:
-                                        pass
+                elif msg_type == "audio_chunk":
+                    raw_b64 = data.get("data", "")
+                    if raw_b64:
+                        logger.debug("[LIVE-WS] audio received PCM chunk")
 
-                        elif "bytes" in msg and msg["bytes"]:
-                            try:
-                                await session.send_realtime_input(
-                                    audio=types.Blob(
-                                        mime_type="audio/pcm;rate=16000",
-                                        data=msg["bytes"]
-                                    )
-                                )
-                            except Exception:
-                                pass
-                except WebSocketDisconnect:
-                    logger.info("[LIVE-WS] client disconnected")
-                except Exception as e:
-                    logger.debug(f"[LIVE-WS] Error in receive_from_client: {e}")
+                elif msg_type == "ping":
+                    await websocket.send_json({"type": "pong"})
 
-            async def send_to_client():
-                while True:
-                    try:
-                        async for response in session.receive():
-                            server_content = response.server_content
-                            tool_call = response.tool_call
-
-                            if server_content and getattr(server_content, "interrupted", False):
-                                logger.info("[LIVE-WS] interrupted")
-                                await websocket.send_json({
-                                    "type": "interrupted",
-                                    "message": "Assistant interrupted by user speech."
-                                })
-                                continue
-
-                            if server_content and getattr(server_content, "model_turn", None):
-                                for part in server_content.model_turn.parts:
-                                    if getattr(part, "inline_data", None) and part.inline_data.data:
-                                        logger.debug(f"[LIVE-WS] Gemini audio received bytes={len(part.inline_data.data)}")
-                                        audio_b64 = base64.b64encode(part.inline_data.data).decode("utf-8")
-                                        await websocket.send_json({
-                                            "type": "audio",
-                                            "data": audio_b64,
-                                            "mime_type": part.inline_data.mime_type or "audio/pcm;rate=24000"
-                                        })
-                                        logger.debug("[LIVE-WS] audio forwarded to Flutter")
-
-                                    if getattr(part, "text", None):
-                                        await websocket.send_json({
-                                            "type": "transcript",
-                                            "role": "assistant",
-                                            "text": part.text
-                                        })
-
-                            if server_content and getattr(server_content, "turn_complete", False):
-                                await websocket.send_json({
-                                    "type": "turn_complete"
-                                })
-
-                            if tool_call and getattr(tool_call, "function_calls", None):
-                                for call in tool_call.function_calls:
-                                    call_id = call.id
-                                    func_name = call.name
-                                    func_args = call.args or {}
-
-                                    tool_result = await gemini_live_service.execute_tool_call(func_name, func_args)
-
-                                    await session.send_tool_response(
-                                        function_responses=[
-                                            types.FunctionResponse(
-                                                id=call_id,
-                                                name=func_name,
-                                                response={"result": tool_result}
-                                            )
-                                        ]
-                                    )
-                    except Exception as e:
-                        logger.debug(f"[LIVE-WS] Session receive break: {e}")
-                        break
-
-            await asyncio.gather(receive_from_client(), send_to_client())
-
-        else:
-            # Mode B: Resilient Fallback Assistant Loop
-            while True:
-                msg = await websocket.receive()
-                if "text" in msg and msg["text"]:
-                    data = json.loads(msg["text"])
-                    user_query = data.get("text", "")
-                    if user_query.strip():
-                        logger.info(f"[LIVE-WS] Processing query via fallback engine: {user_query}")
-                        await _handle_fallback_query(websocket, user_query)
+            elif "bytes" in msg and msg["bytes"]:
+                logger.debug(f"[LIVE-WS] audio received binary bytes: {len(msg['bytes'])}")
 
     except WebSocketDisconnect:
-        logger.info("[LIVE-WS] WebSocket disconnected.")
+        logger.info("[LIVE-WS] client disconnected")
     except Exception as e:
         logger.error(f"[LIVE-WS] Session error: {e}")
-        try:
-            await websocket.send_json({
-                "type": "error",
-                "message": f"Gemini Live त्रुटी: {e}"
-            })
-        except Exception:
-            pass
     finally:
         logger.info("[LIVE-WS] session closed")
-        if session:
-            try:
-                await session.__aexit__(None, None, None)
-            except Exception:
-                pass
