@@ -211,7 +211,6 @@ def _background_process_pdf(book_id: int, file_path: str, storage_path: Optional
         book.status = ProcessingStatus.COMPLETED
         book.status_message = "तयार आहे (Ready ✓)"
         book.progress_percent = 100.0
-        book.is_indexed = True
         db.commit()
         logger.info(f"Successfully processed and indexed book id={book.id}, title='{book.title}', chunks={len(chunks)}, type={'TXT' if is_txt else 'PDF'}")
 
