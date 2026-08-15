@@ -61,7 +61,7 @@ class TestResultScreen extends StatelessWidget {
                       ],
                     ),
                     child: CircularProgressIndicator(
-                      value: result.totalQuestions > 0 ? (result.score / result.totalQuestions) : 0.8,
+                      value: result.totalQuestions > 0 ? (result.score / result.totalQuestions) : 0.0,
                       strokeWidth: 10,
                       backgroundColor: Colors.white12,
                       color: const Color(0xFF00E5FF),

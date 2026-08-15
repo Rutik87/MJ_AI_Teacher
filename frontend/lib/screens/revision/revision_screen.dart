@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:frontend/core/services/sound_service.dart';
+import 'package:frontend/providers/revision_provider.dart';
+import 'package:frontend/providers/progress_provider.dart';
 import 'package:frontend/widgets/bouncing_wrapper.dart';
 import 'package:frontend/widgets/liquid_glass_card.dart';
 
@@ -9,6 +12,13 @@ class RevisionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final revProv = context.watch<RevisionProvider>();
+    final progressProv = context.watch<ProgressProvider>();
+
+    final int dueCount = revProv.summary?.dueTodayCount ?? 0;
+    final int weakCount = progressProv.progress?.weakAreas.length ?? 0;
+    final int bookmarksCount = progressProv.progress?.totalBookmarks ?? 0;
+
     return Scaffold(
       backgroundColor: const Color(0xFF000000), // Pure 100% Pitch Black
       appBar: AppBar(
@@ -29,7 +39,7 @@ class RevisionScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. आजचे Revision Hero Card (Screen 11)
+            // 1. आजचे Revision Hero Card (Screen 11) - 100% Real DB
             LiquidGlassCard(
               variant: GlowVariant.purple,
               padding: const EdgeInsets.all(18),
@@ -59,10 +69,10 @@ class RevisionScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '12 विषय बाकी',
+                          dueCount > 0 ? '$dueCount विषय बाकी' : 'आज कोणतीही उजळणी बाकी नाही.',
                           style: GoogleFonts.notoSansDevanagari(
                             fontSize: 12,
-                            color: Colors.white60,
+                            color: dueCount > 0 ? Colors.white70 : Colors.white54,
                           ),
                         ),
                       ],
@@ -71,9 +81,15 @@ class RevisionScreen extends StatelessWidget {
                   BouncingWrapper(
                     isBubbleSound: true,
                     onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('आजचे Revision सत्र सुरू झाले!')),
-                      );
+                      if (dueCount > 0) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('आजचे Revision सत्र सुरू झाले!')),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('सध्या कोणतीही उजळणी बाकी नाही.')),
+                        );
+                      }
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -90,7 +106,7 @@ class RevisionScreen extends StatelessWidget {
                         ],
                       ),
                       child: Text(
-                        'सुरू करा',
+                        dueCount > 0 ? 'सुरू करा' : 'माहिती',
                         style: GoogleFonts.notoSansDevanagari(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
@@ -105,12 +121,12 @@ class RevisionScreen extends StatelessWidget {
 
             const SizedBox(height: 20),
 
-            // 2. Hub Cards (Weak Topics, Bookmarks, Due Revision - Screen 11)
+            // 2. Hub Cards (Weak Topics, Bookmarks, Due Revision - Real Counts)
             _buildRevisionCategoryTile(
               context,
               icon: Icons.error_outline,
               title: 'Weak Topics',
-              count: '8',
+              count: '$weakCount',
               color: const Color(0xFFFF9100),
             ),
             const SizedBox(height: 12),
@@ -119,7 +135,7 @@ class RevisionScreen extends StatelessWidget {
               context,
               icon: Icons.bookmark_border,
               title: 'Bookmarks',
-              count: '24',
+              count: '$bookmarksCount',
               color: const Color(0xFF00E5FF),
             ),
             const SizedBox(height: 12),
@@ -128,7 +144,7 @@ class RevisionScreen extends StatelessWidget {
               context,
               icon: Icons.alarm,
               title: 'Due Revision',
-              count: '5',
+              count: '$dueCount',
               color: const Color(0xFFD500F9),
             ),
           ],

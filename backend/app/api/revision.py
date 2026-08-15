@@ -14,72 +14,14 @@ from app.services.progress.spaced_repetition import spaced_repetition_service
 
 router = APIRouter(tags=["Spaced Repetition & Revision"])
 
-DEFAULT_REVISION_SEEDS = [
-    {
-        "title": "सत्यशोधक समाज",
-        "key_fact": "स्थापना: २४ सप्टेंबर १८७३, पुणे | संस्थापक: महात्मा ज्योतिराव फुले | वृत्तपत्र: 'दीनबंधू' (कृष्णराव भालेकर)",
-        "subject_name": "महाराष्ट्राचा इतिहास",
-        "topic_name": "समाजसुधारक",
-        "source_book": "महाराष्ट्राचा इतिहास",
-        "source_page": 124
-    },
-    {
-        "title": "कलम ३२ - घटनात्मक उपायांचा अधिकार",
-        "key_fact": "डॉ. आंबेडकरांनी या कलमाला 'घटनेचा आत्मा आणि हृदय' म्हटले आहे. ५ प्रकारचे प्राधिकृत लेख (Writs) काढण्याचा अधिकार सर्वोच्च न्यायालयाला मिळतो.",
-        "subject_name": "राज्यशास्त्र",
-        "topic_name": "मूलभूत हक्क",
-        "source_book": "भारतीय राज्यघटना",
-        "source_page": 64
-    },
-    {
-        "title": "महाराष्ट्रातील प्रमुख नद्यांची लांबी",
-        "key_fact": "गोदावरी: ६६८ किमी (महाराष्ट्र) | भीमा: ४५१ किमी | कृष्णा: २८२ किमी | तापी: २०८ किमी",
-        "subject_name": "महाराष्ट्राचा भूगोल",
-        "topic_name": "नदीप्रणाली",
-        "source_book": "महाराष्ट्राचा भूगोल",
-        "source_page": 42
-    },
-    {
-        "title": "नीती आयोग (NITI Aayog)",
-        "key_fact": "स्थापना: १ जानेवारी २०१५ (नियोजन आयोगाच्या जागी) | अध्यक्ष: पंतप्रधान | थिंक टँक म्हणून कार्य करते.",
-        "subject_name": "अर्थशास्त्र",
-        "topic_name": "नियोजन",
-        "source_book": "भारतीय अर्थव्यवस्था",
-        "source_page": 95
-    }
-]
-
 @router.get("/revision/summary", response_model=RevisionSummaryResponse)
 async def get_revision_summary(user_id: int = 1, db: AsyncSession = Depends(get_db)):
     """
-    Returns counts of total, due today, and mastered revision cards.
+    Returns counts of total, due today, and mastered revision cards strictly from real user database records.
+    Fresh user returns 0 items.
     """
-    # Ensure user exists and populate default seed cards if empty
-    u_res = await db.execute(select(User).where(User.id == user_id))
-    if not u_res.scalar_one_or_none():
-        user = User(id=user_id, username="mpsc_aspirant")
-        db.add(user)
-        await db.commit()
-
     all_res = await db.execute(select(RevisionItem).where(RevisionItem.user_id == user_id))
     items = all_res.scalars().all()
-
-    if not items:
-        for seed in DEFAULT_REVISION_SEEDS:
-            item = RevisionItem(
-                user_id=user_id,
-                title=seed["title"],
-                key_fact=seed["key_fact"],
-                subject_name=seed["subject_name"],
-                topic_name=seed["topic_name"],
-                source_book=seed["source_book"],
-                source_page=seed["source_page"],
-                next_review_due=datetime.utcnow()
-            )
-            db.add(item)
-        await db.commit()
-        all_res = await db.execute(select(RevisionItem).where(RevisionItem.user_id == user_id))
-        items = all_res.scalars().all()
 
     now = datetime.utcnow()
     due_items = [i for i in items if i.next_review_due <= now]

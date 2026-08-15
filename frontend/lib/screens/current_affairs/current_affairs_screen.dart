@@ -161,7 +161,7 @@ class CurrentAffairsScreen extends StatelessWidget {
                 : articles.isEmpty
                     ? Center(
                         child: Text(
-                          'या विषयासाठी चालू घडामोडी उपलब्ध नाहीत.',
+                          'अजून Current Affairs sync झालेले नाहीत.',
                           style: GoogleFonts.notoSansDevanagari(fontSize: 13, color: Colors.white54),
                         ),
                       )

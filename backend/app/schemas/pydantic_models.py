@@ -235,13 +235,19 @@ class SubjectMastery(BaseModel):
     recommendation_mr: str
 
 class ProgressSummaryResponse(BaseModel):
-    total_study_minutes: int
-    total_books_read: int
-    total_tests_taken: int
-    overall_accuracy: float
+    total_study_minutes: int = 0
+    total_books_read: int = 0
+    total_tests_taken: int = 0
+    total_questions_solved: int = 0
+    streak_days: int = 0
+    preparation_percentage: float = 0.0
+    overall_accuracy: float = 0.0
+    total_bookmarks: int = 0
+    due_revision_count: int = 0
     subjects_mastery: List[SubjectMastery] = []
     weak_areas: List[str] = []
     recent_activities: List[Dict[str, Any]] = []
+    weekly_study_hours: List[float] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 # --- Voice & Audio Schemas ---
 class TTSRequest(BaseModel):

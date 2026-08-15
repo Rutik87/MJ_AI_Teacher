@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:frontend/core/services/sound_service.dart';
+import 'package:frontend/providers/progress_provider.dart';
+import 'package:frontend/models/progress_model.dart';
 import 'package:frontend/widgets/bouncing_wrapper.dart';
 import 'package:frontend/widgets/liquid_glass_card.dart';
 
@@ -10,6 +13,21 @@ class ProgressScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final progressProv = context.watch<ProgressProvider>();
+    final progress = progressProv.progress;
+
+    final int studyMinutes = progress?.totalStudyMinutes ?? 0;
+    final int hours = studyMinutes ~/ 60;
+    final int mins = studyMinutes % 60;
+
+    final List<double> weeklyHours = progress?.weeklyStudyHours ?? List.filled(7, 0.0);
+    final List<FlSpot> chartSpots = List.generate(7, (i) {
+      double val = i < weeklyHours.length ? weeklyHours[i] : 0.0;
+      return FlSpot(i.toDouble(), val);
+    });
+
+    final List<SubjectMasteryModel> subjects = progress?.subjectsMastery ?? [];
+
     return Scaffold(
       backgroundColor: const Color(0xFF000000), // Pure 100% Pitch Black
       appBar: AppBar(
@@ -25,32 +43,13 @@ class ProgressScreen extends StatelessWidget {
             color: Colors.white,
           ),
         ),
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 14),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0A0F1E),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Row(
-              children: [
-                Text(
-                  'या आठवड्यात ▾',
-                  style: GoogleFonts.notoSansDevanagari(fontSize: 11, color: const Color(0xFF00E5FF)),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. अभ्यास वेळ Card (12h 45m)
+            // 1. अभ्यास वेळ Card - 100% Real DB Data
             LiquidGlassCard(
               variant: GlowVariant.purple,
               padding: const EdgeInsets.all(16),
@@ -62,7 +61,7 @@ class ProgressScreen extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'अभ्यास वेळ',
+                        'एकूण अभ्यास वेळ',
                         style: GoogleFonts.notoSansDevanagari(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -76,7 +75,7 @@ class ProgressScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          '+2h 15m',
+                          '${hours}h ${mins}m',
                           style: GoogleFonts.poppins(
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
@@ -88,17 +87,25 @@ class ProgressScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '12h 45m',
+                    '${hours}h ${mins}m',
                     style: GoogleFonts.poppins(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
                   ),
+                  if (studyMinutes == 0)
+                    Text(
+                      'अजून अभ्यास सुरू केलेला नाही.',
+                      style: GoogleFonts.notoSansDevanagari(
+                        fontSize: 11,
+                        color: Colors.white54,
+                      ),
+                    ),
 
                   const SizedBox(height: 18),
 
-                  // Glowing Activity Line Chart
+                  // Glowing Activity Line Chart (Real Mon-Sun Data)
                   SizedBox(
                     height: 130,
                     child: LineChart(
@@ -127,15 +134,7 @@ class ProgressScreen extends StatelessWidget {
                         borderData: FlBorderData(show: false),
                         lineBarsData: [
                           LineChartBarData(
-                            spots: const [
-                              FlSpot(0, 1.5),
-                              FlSpot(1, 2.8),
-                              FlSpot(2, 2.0),
-                              FlSpot(3, 4.2),
-                              FlSpot(4, 3.5),
-                              FlSpot(5, 5.0),
-                              FlSpot(6, 4.0),
-                            ],
+                            spots: chartSpots,
                             isCurved: true,
                             color: const Color(0xFF00E5FF),
                             barWidth: 3,
@@ -162,7 +161,7 @@ class ProgressScreen extends StatelessWidget {
 
             const SizedBox(height: 24),
 
-            // 2. विषयानुसार प्रगती (Subject Performance Progress Bars)
+            // 2. विषयानुसार प्रगती (Subject Performance Progress Bars - 100% Real DB)
             Text(
               'विषयानुसार प्रगती',
               style: GoogleFonts.notoSansDevanagari(
@@ -173,18 +172,41 @@ class ProgressScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            _buildSubjectBar('इतिहास', 0.85, const Color(0xFF00E676)),
-            _buildSubjectBar('राज्यशास्त्र', 0.78, const Color(0xFF00E5FF)),
-            _buildSubjectBar('अर्थशास्त्र', 0.62, const Color(0xFFFF9100)),
-            _buildSubjectBar('भूगोल', 0.70, const Color(0xFFD500F9)),
-            _buildSubjectBar('पर्यावरण', 0.90, const Color(0xFF00E676)),
+            if (subjects.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0A0E17),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Center(
+                  child: Text(
+                    'अजून विषयानुसार अभ्यास डेटा उपलब्ध नाही.',
+                    style: GoogleFonts.notoSansDevanagari(fontSize: 12, color: Colors.white54),
+                  ),
+                ),
+              )
+            else
+              ...subjects.map((s) {
+                final double factor = (s.masteryPercentage / 100.0).clamp(0.0, 1.0);
+                Color barColor = const Color(0xFF00E5FF);
+                if (s.masteryPercentage >= 75) {
+                  barColor = const Color(0xFF00E676);
+                } else if (s.masteryPercentage < 50 && s.attempted > 0) {
+                  barColor = const Color(0xFFFF5252);
+                } else if (s.attempted == 0) {
+                  barColor = const Color(0xFF546E7A);
+                }
+                return _buildSubjectBar(s.subjectName, factor, barColor, s.attempted);
+              }),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSubjectBar(String subject, double value, Color color) {
+  Widget _buildSubjectBar(String subject, double value, Color color, int attempted) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -208,7 +230,7 @@ class ProgressScreen extends StatelessWidget {
                 ),
               ),
               Text(
-                '${(value * 100).toInt()}%',
+                attempted > 0 ? '${(value * 100).toInt()}%' : '0% (सराव नाही)',
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
@@ -221,7 +243,7 @@ class ProgressScreen extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-              value: value,
+              value: value > 0.0 ? value : 0.001,
               minHeight: 6,
               backgroundColor: Colors.white12,
               color: color,

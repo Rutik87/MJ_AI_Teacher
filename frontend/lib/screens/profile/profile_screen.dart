@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:frontend/core/services/sound_service.dart';
+import 'package:frontend/providers/progress_provider.dart';
 import 'package:frontend/widgets/bouncing_wrapper.dart';
 import 'package:frontend/widgets/liquid_glass_card.dart';
 
@@ -9,6 +11,22 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final progressProv = context.watch<ProgressProvider>();
+    final progress = progressProv.progress;
+
+    final int streak = progress?.streakDays ?? 0;
+    final double prepPct = progress?.preparationPercentage ?? 0.0;
+    final int testsTaken = progress?.totalTestsTaken ?? 0;
+    final int studyMinutes = progress?.totalStudyMinutes ?? 0;
+    final int questionsSolved = progress?.totalQuestionsSolved ?? 0;
+    final double accuracy = progress?.overallAccuracy ?? 0.0;
+
+    final int hours = studyMinutes ~/ 60;
+    final int mins = studyMinutes % 60;
+    final double dailyGoalHours = 3.0;
+    final double dailyGoalMinutes = dailyGoalHours * 60;
+    final double dailyProgress = (studyMinutes / dailyGoalMinutes).clamp(0.0, 1.0);
+
     return Scaffold(
       backgroundColor: const Color(0xFF000000), // Pure 100% Pitch Black
       appBar: AppBar(
@@ -84,20 +102,30 @@ class ProfileScreen extends StatelessWidget {
 
             const SizedBox(height: 20),
 
-            // 2. 3 Stats Badges (12 Streak, 68% प्रगती, 24 चाचण्या - Screen 13)
+            // 2. 3 Real Stats Badges (Streak, प्रगती, चाचण्या) - 100% Real DB
             Row(
               children: [
-                _buildStatTile('12', 'Streak 🔥', const Color(0xFFFF9100)),
+                _buildStatTile('$streak', 'Streak 🔥', const Color(0xFFFF9100)),
                 const SizedBox(width: 8),
-                _buildStatTile('68%', 'प्रगती', const Color(0xFF00E5FF)),
+                _buildStatTile('${prepPct.toStringAsFixed(0)}%', 'प्रगती', const Color(0xFF00E5FF)),
                 const SizedBox(width: 8),
-                _buildStatTile('24', 'चाचण्या', const Color(0xFFD500F9)),
+                _buildStatTile('$testsTaken', 'चाचण्या', const Color(0xFFD500F9)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _buildStatTile('${hours}h ${mins}m', 'अभ्यास वेळ', const Color(0xFF00E676)),
+                const SizedBox(width: 8),
+                _buildStatTile('$questionsSolved', 'सोडवलेले प्रश्न', const Color(0xFFFF5252)),
+                const SizedBox(width: 8),
+                _buildStatTile('${accuracy.toStringAsFixed(0)}%', 'अचूकता', const Color(0xFFFFD600)),
               ],
             ),
 
             const SizedBox(height: 24),
 
-            // 3. आजचे ध्येय (3 तास अभ्यास - Screen 13)
+            // 3. आजचे ध्येय (3 तास अभ्यास - Real State)
             Text(
               'आजचे ध्येय',
               style: GoogleFonts.notoSansDevanagari(
@@ -127,7 +155,7 @@ class ProfileScreen extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '2h 15m / 3h (73%)',
+                        '${hours}h ${mins}m / 3h (${(dailyProgress * 100).toStringAsFixed(0)}%)',
                         style: GoogleFonts.poppins(
                           fontSize: 11,
                           color: const Color(0xFF00E676),
@@ -136,11 +164,20 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 6),
+                  if (studyMinutes == 0)
+                    Text(
+                      'आज अजून अभ्यास केलेला नाही.',
+                      style: GoogleFonts.notoSansDevanagari(
+                        fontSize: 11,
+                        color: Colors.white54,
+                      ),
+                    ),
+                  const SizedBox(height: 8),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(6),
                     child: LinearProgressIndicator(
-                      value: 0.73,
+                      value: dailyProgress > 0.0 ? dailyProgress : 0.001,
                       minHeight: 8,
                       backgroundColor: Colors.white12,
                       color: const Color(0xFF00E676),

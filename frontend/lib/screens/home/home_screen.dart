@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:frontend/core/services/sound_service.dart';
 import 'package:frontend/providers/books_provider.dart';
+import 'package:frontend/providers/progress_provider.dart';
 import 'package:frontend/widgets/bouncing_wrapper.dart';
 import 'package:frontend/widgets/liquid_glass_card.dart';
 import 'package:frontend/widgets/cyber_drawer.dart';
@@ -24,6 +25,15 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final booksProv = context.watch<BooksProvider>();
+    final progressProv = context.watch<ProgressProvider>();
+
+    final progress = progressProv.progress;
+    final double prepPct = progress?.preparationPercentage ?? 0.0;
+    final int streak = progress?.streakDays ?? 0;
+    final double progressFactor = (prepPct / 100.0).clamp(0.0, 1.0);
+
+    final bool hasBooks = booksProv.allBooks.isNotEmpty;
+    final activeBook = hasBooks ? booksProv.allBooks.first : null;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -93,7 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. तुमची तयारी Card (Screen 2)
+            // 1. तुमची तयारी Card (Screen 2) - 100% Real DB Data
             LiquidGlassCard(
               variant: GlowVariant.purple,
               padding: const EdgeInsets.all(16),
@@ -117,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '68%',
+                            '${prepPct.toStringAsFixed(0)}%',
                             style: GoogleFonts.poppins(
                               fontSize: 28,
                               fontWeight: FontWeight.bold,
@@ -126,11 +136,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '12 दिवस streak 🔥',
+                            streak > 0 ? '$streak दिवस streak 🔥' : 'अजून अभ्यास सुरू केलेला नाही.',
                             style: GoogleFonts.notoSansDevanagari(
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
-                              color: const Color(0xFFFF9100),
+                              color: streak > 0 ? const Color(0xFFFF9100) : Colors.white54,
                             ),
                           ),
                         ],
@@ -144,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             width: 60,
                             height: 60,
                             child: CircularProgressIndicator(
-                              value: 0.68,
+                              value: progressFactor,
                               strokeWidth: 6,
                               backgroundColor: Colors.white12,
                               color: const Color(0xFF00E5FF),
@@ -168,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       child: FractionallySizedBox(
                         alignment: Alignment.centerLeft,
-                        widthFactor: 0.68,
+                        widthFactor: progressFactor > 0.0 ? progressFactor : 0.001,
                         child: Container(
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
@@ -186,7 +196,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const SizedBox(height: 18),
 
-            // 2. पुढे सुरू ठेवा Card (Screen 2)
+            // 2. पुढे सुरू ठेवा Card (Screen 2) - Real Book or Clean Empty CTA
             Text(
               'पुढे सुरू ठेवा',
               style: GoogleFonts.notoSansDevanagari(
@@ -207,13 +217,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     width: 44,
                     height: 52,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF1565C0), Color(0xFF00E5FF)],
+                      gradient: LinearGradient(
+                        colors: hasBooks
+                            ? [const Color(0xFF1565C0), const Color(0xFF00E5FF)]
+                            : [const Color(0xFF37474F), const Color(0xFF455A64)],
                       ),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Center(
-                      child: Icon(Icons.menu_book, color: Colors.white, size: 22),
+                    child: Center(
+                      child: Icon(
+                        hasBooks ? Icons.menu_book : Icons.library_add,
+                        color: Colors.white,
+                        size: 22,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -222,20 +238,26 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'भारतीय राज्यघटना',
+                          hasBooks ? activeBook!.title : 'अजून पुस्तक सुरू केलेले नाही.',
                           style: GoogleFonts.notoSansDevanagari(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'प्रकरण ४ • 72% पूर्ण',
+                          hasBooks
+                              ? '${activeBook!.subjectName} • ${activeBook.progressPercent.toStringAsFixed(0)}% पूर्ण'
+                              : 'अभ्यासासाठी तुमचे पहिले PDF पुस्तक जोडा',
                           style: GoogleFonts.notoSansDevanagari(
                             fontSize: 11,
                             color: Colors.white60,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -244,12 +266,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   BouncingWrapper(
                     isBubbleSound: true,
                     onTap: () {
-                      if (booksProv.allBooks.isNotEmpty) {
+                      if (hasBooks) {
                         Navigator.of(context).push(MaterialPageRoute(
-                          builder: (ctx) => PDFReaderScreen(book: booksProv.allBooks.first),
+                          builder: (ctx) => PDFReaderScreen(book: activeBook!),
                         ));
                       } else {
-                        widget.onNavigateTab(2); // Books
+                        widget.onNavigateTab(2); // Books tab
                       }
                     },
                     child: Container(
@@ -267,7 +289,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                       child: Text(
-                        'सुरू ठेवा',
+                        hasBooks ? 'सुरू ठेवा' : 'PDF जोडा',
                         style: GoogleFonts.notoSansDevanagari(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
