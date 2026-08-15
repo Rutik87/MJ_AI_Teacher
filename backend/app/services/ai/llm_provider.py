@@ -61,6 +61,17 @@ class LLMProvider:
         # 3. Fallback Heuristic Generator (Offline / Free)
         return None, self.heuristic_provider.provider_name
 
+    async def generate_completion(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        temperature: float = 0.2,
+        max_tokens: int = 2048
+    ) -> Tuple[Optional[str], str]:
+        """Public method for generating completions using active or fallback provider."""
+        res, prov = await self._execute_with_provider(prompt, system_prompt, temperature, max_tokens)
+        return res, prov
+
     async def generate_chat_response(
         self,
         user_message: str,
