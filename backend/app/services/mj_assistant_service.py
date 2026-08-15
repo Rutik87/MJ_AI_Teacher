@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services import current_affairs_service
 from app.services.rag.retriever import rag_retriever
 from app.services.ai.llm_provider import llm_provider
-from app.services.tts.tts_service import tts_service
+from app.services.voice_service import voice_service
 from app.services.speech.marathi_normalizer import MarathiPronunciationNormalizer
 from app.utils.logger import logger
 
@@ -115,11 +115,11 @@ async def process_mj_conversation(
     if is_wake_word_only or not raw_query:
         greeting = random.choice(ACTIVATION_GREETINGS)
         speech_text = clean_text_for_speech(greeting)
-        audio_url = await tts_service.generate_speech_file(speech_text, emotion="friendly")
+        voice_res = await voice_service.generate_voice(speech_text, emotion="friendly")
         return {
             "reply_text": greeting,
             "speech_text": speech_text,
-            "audio_url": audio_url,
+            "audio_url": voice_res.get("audio_url"),
             "intent": "activation",
             "mode": "FRIEND",
             "emotion": "friendly",
@@ -131,11 +131,11 @@ async def process_mj_conversation(
     if any(w in query_lower for w in ["थांब", "stop", "शांत", "बस", "चूप"]):
         reply = "हो थांबले 😊 सांग पुढं काय करायचं?"
         speech_text = clean_text_for_speech(reply)
-        audio_url = await tts_service.generate_speech_file(speech_text, emotion="calm")
+        voice_res = await voice_service.generate_voice(speech_text, emotion="calm")
         return {
             "reply_text": reply,
             "speech_text": speech_text,
-            "audio_url": audio_url,
+            "audio_url": voice_res.get("audio_url"),
             "intent": "interruption",
             "mode": "CASUAL",
             "emotion": "calm",
@@ -150,11 +150,11 @@ async def process_mj_conversation(
     if any(w in query_lower for w in ["mood नाही", "मूड नाही", "इच्छा नाही", "कंटाळा"]):
         reply = random.choice(CASUAL_RESPONSES["mood_off"])
         speech_text = clean_text_for_speech(reply)
-        audio_url = await tts_service.generate_speech_file(speech_text, emotion="empathetic", speed=0.92)
+        voice_res = await voice_service.generate_voice(speech_text, emotion="empathetic", speed=0.92)
         return {
             "reply_text": reply,
             "speech_text": speech_text,
-            "audio_url": audio_url,
+            "audio_url": voice_res.get("audio_url"),
             "intent": "casual_empathy",
             "mode": "FRIEND",
             "emotion": "empathetic",
@@ -165,11 +165,11 @@ async def process_mj_conversation(
     if any(w in query_lower for w in ["काय चाललंय", "कशी आहेस", "काय करतेस", "बोल ना", "जेवलीस का"]):
         reply = random.choice(CASUAL_RESPONSES["general_chat"])
         speech_text = clean_text_for_speech(reply)
-        audio_url = await tts_service.generate_speech_file(speech_text, emotion="friendly", speed=1.0)
+        voice_res = await voice_service.generate_voice(speech_text, emotion="friendly", speed=1.0)
         return {
             "reply_text": reply,
             "speech_text": speech_text,
-            "audio_url": audio_url,
+            "audio_url": voice_res.get("audio_url"),
             "intent": "casual_chat",
             "mode": "CASUAL",
             "emotion": "friendly",
@@ -184,11 +184,11 @@ async def process_mj_conversation(
             "आणि इतिहासाचे 20 MCQs सोडवायचे आहेत. आधी 20 मिनिटे राज्यघटना करूया का? 😄"
         )
         speech_text = clean_text_for_speech(reply)
-        audio_url = await tts_service.generate_speech_file(speech_text, emotion="encouraging", speed=0.96)
+        voice_res = await voice_service.generate_voice(speech_text, emotion="encouraging", speed=0.96)
         return {
             "reply_text": reply,
             "speech_text": speech_text,
-            "audio_url": audio_url,
+            "audio_url": voice_res.get("audio_url"),
             "intent": "study_planner",
             "mode": "STUDY",
             "emotion": "encouraging",
@@ -208,11 +208,11 @@ async def process_mj_conversation(
             )
             speech = f"आजची महत्त्वाची घडामोड आहे {top.title_mr}. {top.summary_mr} यावर आणखी प्रश्न सोडवायचा का?"
             speech_text = clean_text_for_speech(speech)
-            audio_url = await tts_service.generate_speech_file(speech_text, emotion="explaining", speed=0.95)
+            voice_res = await voice_service.generate_voice(speech_text, emotion="explaining", speed=0.95)
             return {
                 "reply_text": reply,
                 "speech_text": speech_text,
-                "audio_url": audio_url,
+                "audio_url": voice_res.get("audio_url"),
                 "intent": "current_affairs",
                 "mode": "CURRENT_AFFAIRS",
                 "emotion": "explaining",
@@ -224,11 +224,11 @@ async def process_mj_conversation(
     if any(w in query_lower for w in ["test घे", "चाचणी घे", "mcq विचार", "प्रश्न विचार", "क्विझ"]):
         reply = "नक्कीच! आपण सराव चाचणी सुरू करूया. विषय कोणता निवडायचा — इतिहास की राज्यघटना? 📝"
         speech_text = clean_text_for_speech(reply)
-        audio_url = await tts_service.generate_speech_file(speech_text, emotion="happy", speed=1.0)
+        voice_res = await voice_service.generate_voice(speech_text, emotion="happy", speed=1.0)
         return {
             "reply_text": reply,
             "speech_text": speech_text,
-            "audio_url": audio_url,
+            "audio_url": voice_res.get("audio_url"),
             "intent": "test_request",
             "mode": "TEST",
             "emotion": "happy",
@@ -240,11 +240,11 @@ async def process_mj_conversation(
     if any(w in query_lower for w in ["revision", "उजळणी", "रिव्हिजन", "रिवाईज"]):
         reply = "चला, आपण 3 महत्त्वाच्या मुद्द्यांमध्ये झटपट उजळणी करूया! तू कुठल्या घटकाची उजळणी करायची ते सांग."
         speech_text = clean_text_for_speech(reply)
-        audio_url = await tts_service.generate_speech_file(speech_text, emotion="encouraging", speed=0.95)
+        voice_res = await voice_service.generate_voice(speech_text, emotion="encouraging", speed=0.95)
         return {
             "reply_text": reply,
             "speech_text": speech_text,
-            "audio_url": audio_url,
+            "audio_url": voice_res.get("audio_url"),
             "intent": "revision",
             "mode": "REVISION",
             "emotion": "encouraging",
@@ -287,7 +287,8 @@ async def process_mj_conversation(
             emotion = "encouraging"
 
     speech_text = clean_text_for_speech(final_reply)
-    audio_url = await tts_service.generate_speech_file(speech_text, emotion=emotion, speed=0.95)
+    voice_res = await voice_service.generate_voice(speech_text, emotion=emotion, speed=0.95)
+    audio_url = voice_res.get("audio_url")
 
     sources_list = [
         {

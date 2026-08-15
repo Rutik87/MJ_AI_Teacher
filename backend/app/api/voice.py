@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 
 from app.schemas.pydantic_models import TTSRequest, TTSResponse, STTResponse, MJVoiceProfileResponse
 from app.services.speech.stt_service import stt_service
-from app.services.tts.tts_service import tts_service
+from app.services.voice_service import voice_service
 from app.config import settings
 from app.utils.logger import logger
 
@@ -16,7 +16,7 @@ async def get_voice_profile():
     """
     Returns active authorized voice profile metadata.
     """
-    return tts_service.get_voice_profile()
+    return voice_service.get_voice_profile()
 
 @router.post("/voice/transcribe", response_model=STTResponse)
 async def transcribe_audio(
@@ -35,22 +35,21 @@ async def generate_speech(request: TTSRequest):
     """
     Generates Marathi speech audio from text using the single authorized MJ voice.
     """
-    audio_url, duration, normalized_text = await tts_service.synthesize_with_metadata(
+    res = await voice_service.generate_voice(
         text=request.text,
-        lang=request.lang or "mr",
-        speed=request.speed,
-        emotion=request.emotion or "neutral"
+        emotion=request.emotion or "neutral",
+        speed=request.speed
     )
 
-    if not audio_url:
+    if not res.get("audio_url"):
         raise HTTPException(status_code=500, detail="ऑडिओ तयार करता आला नाही.")
 
     return TTSResponse(
-        audio_url=audio_url,
-        duration_seconds=duration,
+        audio_url=res["audio_url"],
+        duration_seconds=res["duration_seconds"],
         emotion=request.emotion or "neutral",
-        voice_profile_id="mj_primary",
-        speech_text=normalized_text
+        voice_profile_id=res["voice_profile_id"],
+        speech_text=res["normalized_text"]
     )
 
 @router.get("/voice/audio/{filename}")
