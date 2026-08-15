@@ -50,6 +50,13 @@ class AuthorizedVoiceProfile:
         self.is_authorized = True
         self.base_speed = 1.0
         self.reference_id = "mj_authorized_v1"
+        self.reference_wav_path = Path("voice/mj_reference.wav")
+        self.reference_txt_path = Path("voice/mj_reference.txt")
+        self.reference_transcript = (
+            self.reference_txt_path.read_text(encoding="utf-8").strip()
+            if self.reference_txt_path.exists()
+            else ""
+        )
 
 
 class MJVoiceEngine:

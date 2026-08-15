@@ -1,0 +1,38 @@
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Voice & Audio Privacy Protection
+backend/voice/
+backend/data/
+data/voice_lab/
+data/voice_profiles/
+data/audio_cache/
+*.mpeg
+*.m4a
+*.wav
+*.mp3
+
+# Local Database & Storage
+data/database/
+data/cloud_storage_local/
+data/books/
+data/embeddings/
+
+# Node & Frontend
+node_modules/
+frontend/build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
