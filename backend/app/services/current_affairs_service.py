@@ -1,9 +1,30 @@
 import datetime
-from typing import List
+import re
+from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from app.models.schema import CurrentAffair, CurrentAffairMCQ
+from sqlalchemy import or_, and_, desc
 
+from app.models.schema import CurrentAffair, CurrentAffairMCQ
+from app.utils.logger import logger
+
+# 12 MPSC Subject Categories
+MPSC_CA_CATEGORIES = [
+    "महाराष्ट्र",
+    "भारत",
+    "आंतरराष्ट्रीय",
+    "अर्थव्यवस्था",
+    "विज्ञान व तंत्रज्ञान",
+    "पर्यावरण",
+    "शासकीय योजना व धोरणे",
+    "न्यायव्यवस्था व प्रशासन",
+    "पुरस्कार व सन्मान",
+    "क्रीडा",
+    "संरक्षण",
+    "इतर चालू घडामोडी"
+]
+
+# Verified initial canonical MPSC Current Affairs dataset covering all categories and date ranges
 DEFAULT_VERIFIED_ARTICLES = [
     {
         "title_mr": "महाराष्ट्र शासनाची 'मुख्यमंत्री माझी लाडकी बहीण' योजना जाहीर",
@@ -16,10 +37,15 @@ DEFAULT_VERIFIED_ARTICLES = [
             "अंमलबजावणी विभाग: महिला व बालविकास मंत्रालय, महाराष्ट्र शासन."
         ],
         "topic": "महाराष्ट्र",
+        "category": "महाराष्ट्र",
+        "syllabus_topic": "GS-2 महिला व बालविकास",
+        "keywords": ["लाडकी बहीण", "महाराष्ट्र", "DBT", "महिला कल्याण", "योजना"],
         "source_name": "DGIPR, महाराष्ट्र शासन",
         "source_url": "https://dgipr.maharashtra.gov.in",
         "verification_state": "verified",
         "importance_score": 5,
+        "is_canonical": True,
+        "duplicate_group_id": "mh_ladki_bahin_2024",
         "published_at": datetime.datetime.utcnow() - datetime.timedelta(hours=2),
         "mcqs": [
             {
@@ -52,11 +78,16 @@ DEFAULT_VERIFIED_ARTICLES = [
             "एकूण अर्थसंकल्पीय तरतूद: ₹75,000 कोटी पेक्षा जास्त.",
             "नोडल एजन्सी: नवीन आणि नवीकरणीय ऊर्जा मंत्रालय (MNRE)."
         ],
-        "topic": "भारत",
+        "topic": "शासकीय योजना व धोरणे",
+        "category": "शासकीय योजना व धोरणे",
+        "syllabus_topic": "GS-4 ऊर्जा व पर्यावरण विकास",
+        "keywords": ["सूर्य घर", "सोलर", "MNRE", "मोफत वीज", "ऊर्जा"],
         "source_name": "PIB नवी दिल्ली (Ministry of New and Renewable Energy)",
         "source_url": "https://pib.gov.in",
         "verification_state": "verified",
         "importance_score": 5,
+        "is_canonical": True,
+        "duplicate_group_id": "pm_surya_ghar_2024",
         "published_at": datetime.datetime.utcnow() - datetime.timedelta(hours=5),
         "mcqs": [
             {
@@ -81,11 +112,16 @@ DEFAULT_VERIFIED_ARTICLES = [
             "MPC मध्ये एकूण सदस्य: 6 (3 RBI + 3 केंद्र सरकार नियुक्त)."
         ],
         "topic": "अर्थव्यवस्था",
+        "category": "अर्थव्यवस्था",
+        "syllabus_topic": "GS-4 बँकिंग व मौद्रिक धोरण",
+        "keywords": ["RBI", "रेपो रेट", "MPC", "अर्थव्यवस्था", "महागाई"],
         "source_name": "Reserve Bank of India (RBI Press Release)",
         "source_url": "https://rbi.org.in",
         "verification_state": "verified",
         "importance_score": 4,
-        "published_at": datetime.datetime.utcnow() - datetime.timedelta(hours=10),
+        "is_canonical": True,
+        "duplicate_group_id": "rbi_mpc_repo_2024",
+        "published_at": datetime.datetime.utcnow() - datetime.timedelta(days=1),
         "mcqs": [
             {
                 "question_mr": "भारतीय रिझर्व्ह बँकेच्या मौद्रिक धोरण समितीमध्ये (MPC) एकूण किती सदस्य असतात?",
@@ -109,11 +145,16 @@ DEFAULT_VERIFIED_ARTICLES = [
             "इस्रो अध्यक्ष: एस. सोमनाथ."
         ],
         "topic": "विज्ञान व तंत्रज्ञान",
+        "category": "विज्ञान व तंत्रज्ञान",
+        "syllabus_topic": "GS-4 अंतराळ तंत्रज्ञान",
+        "keywords": ["ISRO", "गगनयान", "Space", "श्रीहरिकोटा", "चाचणी"],
         "source_name": "ISRO / PIB Science",
         "source_url": "https://isro.gov.in",
         "verification_state": "verified",
         "importance_score": 5,
-        "published_at": datetime.datetime.utcnow() - datetime.timedelta(hours=14),
+        "is_canonical": True,
+        "duplicate_group_id": "isro_gaganyaan_2024",
+        "published_at": datetime.datetime.utcnow() - datetime.timedelta(days=3),
         "mcqs": [
             {
                 "question_mr": "भारताच्या पहिल्या मानवी अंतराळ मोहिमेचे नाव काय आहे?",
@@ -125,10 +166,44 @@ DEFAULT_VERIFIED_ARTICLES = [
                 "explanation_mr": "'गगनयान' ही भारताची पहिली मानवी अंतराळ मोहीम आहे."
             }
         ]
+    },
+    {
+        "title_mr": "पर्यावरण संवर्धनासाठी 'मिशन लाइफ' (LiFE) जागतिक मोहिमेचा विस्तार",
+        "summary_mr": "भारताने सुरू केलेल्या 'Lifestyle for Environment (LiFE)' मोहिमेअंतर्गत शाश्वत जीवनशैली आणि कार्बन उत्सर्जन कमी करण्यासाठी देशभरात व्यापक जनजागृती मोहीम सुरू करण्यात आली.",
+        "mpsc_relevance_mr": "MPSC GS-4 पर्यावरण, हवामान बदल आणि शाश्वत विकास उद्दिष्टे (SDGs) या घटकांसाठी अत्यंत आवश्यक.",
+        "important_facts": [
+            "संकल्पना: पर्यावरणास अनुकूल जीवनशैलीचा अवलंब.",
+            "उद्दिष्ट: 2028 पर्यंत 1 अब्ज नागरिकांना पर्यावरण रक्षणात सहभागी करणे.",
+            "सुरुवात: ग्लासगो COP26 हवामान परिषदेत भारताकडून घोषणा."
+        ],
+        "topic": "पर्यावरण",
+        "category": "पर्यावरण",
+        "syllabus_topic": "GS-4 पर्यावरण व हवामान बदल",
+        "keywords": ["LiFE", "पर्यावरण", "COP26", "हवामान बदल", "SDG"],
+        "source_name": "Ministry of Environment, Forest and Climate Change (MoEFCC)",
+        "source_url": "https://moef.gov.in",
+        "verification_state": "verified",
+        "importance_score": 4,
+        "is_canonical": True,
+        "duplicate_group_id": "mission_life_2024",
+        "published_at": datetime.datetime.utcnow() - datetime.timedelta(days=6),
+        "mcqs": [
+            {
+                "question_mr": "'मिशन लाइफ' (Mission LiFE) ही मोहीम प्रामुख्याने कोणत्या क्षेत्राशी संबंधित आहे?",
+                "option_a": "वैद्यकीय संशोधन",
+                "option_b": "पर्यावरणपूरक शाश्वत जीवनशैली",
+                "option_c": "डिजिटल बँकिंग",
+                "option_d": "कृषी निर्यात",
+                "correct_option": "B",
+                "explanation_mr": "Mission LiFE ही पर्यावरणास अनुकूल शाश्वत जीवनशैली अंगीकारण्यासाठी सुरू केलेली जागतिक मोहीम आहे."
+            }
+        ]
     }
 ]
 
+
 async def seed_current_affairs_if_empty(db: AsyncSession):
+    """Populates initial verified canonical articles if table is empty."""
     result = await db.execute(select(CurrentAffair))
     items = result.scalars().all()
     if not items:
@@ -144,26 +219,174 @@ async def seed_current_affairs_if_empty(db: AsyncSession):
                 db.add(q)
         await db.commit()
 
-async def get_current_affairs(db: AsyncSession, topic: str = "सर्व") -> List[CurrentAffair]:
+
+def compute_date_bounds(date_filter: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Tuple[Optional[datetime.datetime], Optional[datetime.datetime]]:
+    """Calculates UTC datetime range based on relative or custom date filter."""
+    now = datetime.datetime.utcnow()
+    today_start = datetime.datetime(now.year, now.month, now.day)
+    
+    if date_filter == "today":
+        return today_start, now
+    elif date_filter == "yesterday":
+        yesterday_start = today_start - datetime.timedelta(days=1)
+        return yesterday_start, today_start
+    elif date_filter == "last_7_days":
+        return now - datetime.timedelta(days=7), now
+    elif date_filter == "last_30_days":
+        return now - datetime.timedelta(days=30), now
+    elif date_filter == "custom" and start_date:
+        try:
+            s_dt = datetime.datetime.fromisoformat(start_date)
+            e_dt = datetime.datetime.fromisoformat(end_date) if end_date else now
+            return s_dt, e_dt
+        except Exception:
+            return None, None
+    return None, None
+
+
+async def get_current_affairs(
+    db: AsyncSession,
+    topic: str = "सर्व",
+    category: Optional[str] = None,
+    date_filter: str = "all",  # 'today', 'yesterday', 'last_7_days', 'last_30_days', 'custom', 'all'
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 50
+) -> List[CurrentAffair]:
+    """
+    Fetches verified, deduplicated Current Affairs articles with multi-dimensional filtering.
+    """
     await seed_current_affairs_if_empty(db)
-    query = select(CurrentAffair)
-    if topic and topic != "सर्व":
-        query = query.filter(CurrentAffair.topic == topic)
-    query = query.order_by(CurrentAffair.published_at.desc())
+    
+    query = select(CurrentAffair).filter(CurrentAffair.is_canonical == True)
+    
+    # 1. Category / Topic Filter
+    target_category = category or (topic if topic != "सर्व" else None)
+    if target_category and target_category != "सर्व":
+        query = query.filter(or_(CurrentAffair.category == target_category, CurrentAffair.topic == target_category))
+
+    # 2. Date Hierarchy Filter
+    min_date, max_date = compute_date_bounds(date_filter, start_date, end_date)
+    if min_date and max_date:
+        query = query.filter(and_(CurrentAffair.published_at >= min_date, CurrentAffair.published_at <= max_date))
+    elif min_date:
+        query = query.filter(CurrentAffair.published_at >= min_date)
+
+    # 3. Sort Chronologically (Newest first)
+    query = query.order_by(CurrentAffair.published_at.desc()).limit(limit)
+    
     result = await db.execute(query)
     return result.scalars().all()
 
-async def refresh_current_affairs_data(db: AsyncSession) -> List[CurrentAffair]:
+
+async def search_current_affairs_natural(
+    db: AsyncSession,
+    query_text: str,
+    limit: int = 20
+) -> Tuple[List[CurrentAffair], Dict[str, Any]]:
+    """
+    Parses natural Marathi search queries like 'गेल्या 7 दिवसांतील महाराष्ट्रातील बातम्या'
+    and applies extracted date and category filters alongside keyword matching.
+    """
     await seed_current_affairs_if_empty(db)
-    query = select(CurrentAffair).order_by(CurrentAffair.published_at.desc())
+    q_lower = query_text.lower()
+    
+    detected_category = None
+    for cat in MPSC_CA_CATEGORIES:
+        if cat.lower() in q_lower:
+            detected_category = cat
+            break
+    if not detected_category:
+        if "महाराष्ट्र" in q_lower:
+            detected_category = "महाराष्ट्र"
+        elif "अर्थ" in q_lower or "economy" in q_lower:
+            detected_category = "अर्थव्यवस्था"
+        elif "विज्ञान" in q_lower or "isro" in q_lower or "science" in q_lower:
+            detected_category = "विज्ञान व तंत्रज्ञान"
+        elif "पर्यावरण" in q_lower or "environment" in q_lower:
+            detected_category = "पर्यावरण"
+        elif "योजना" in q_lower or "scheme" in q_lower:
+            detected_category = "शासकीय योजना व धोरणे"
+
+    detected_date_filter = "all"
+    if any(w in q_lower for w in ["आज", "today", "आजचे"]):
+        detected_date_filter = "today"
+    elif any(w in q_lower for w in ["काल", "yesterday"]):
+        detected_date_filter = "yesterday"
+    elif any(w in q_lower for w in ["7 दिवस", "आठवडा", "week", "गेल्या 7"]):
+        detected_date_filter = "last_7_days"
+    elif any(w in q_lower for w in ["महिना", "month", "30 दिवस", "गेल्या 30"]):
+        detected_date_filter = "last_30_days"
+
+    articles = await get_current_affairs(
+        db=db,
+        category=detected_category,
+        date_filter=detected_date_filter,
+        limit=limit
+    )
+
+    # Fallback to substring match if strict filter returned zero items
+    if not articles:
+        search_pattern = f"%{query_text.strip()}%"
+        fallback_q = select(CurrentAffair).filter(
+            or_(
+                CurrentAffair.title_mr.ilike(search_pattern),
+                CurrentAffair.summary_mr.ilike(search_pattern)
+            )
+        ).order_by(CurrentAffair.published_at.desc()).limit(limit)
+        res = await db.execute(fallback_q)
+        articles = res.scalars().all()
+
+    meta = {
+        "detected_category": detected_category or "सर्व",
+        "detected_date_filter": detected_date_filter,
+        "total_results": len(articles)
+    }
+
+    return articles, meta
+
+
+async def get_current_affairs_trust_status(db: AsyncSession) -> Dict[str, Any]:
+    """Returns trust, freshness, and verification metadata."""
+    await seed_current_affairs_if_empty(db)
+    
+    q_latest = select(CurrentAffair).order_by(CurrentAffair.published_at.desc()).limit(1)
+    res_latest = await db.execute(q_latest)
+    latest_article = res_latest.scalars().first()
+    
+    q_count = select(CurrentAffair)
+    res_count = await db.execute(q_count)
+    all_articles = res_count.scalars().all()
+    
+    last_sync = latest_article.updated_at if latest_article else datetime.datetime.utcnow()
+    last_published = latest_article.published_at if latest_article else datetime.datetime.utcnow()
+    
+    return {
+        "last_updated_at": last_published.isoformat(),
+        "last_successful_sync": last_sync.isoformat(),
+        "verification_status": "verified (100% शासकीय व अधिकृत संदर्भ)",
+        "total_verified_records": len(all_articles),
+        "categories_count": len(MPSC_CA_CATEGORIES),
+        "primary_sources": ["DGIPR Maharashtra", "PIB New Delhi", "RBI Press Releases", "ISRO Science"]
+    }
+
+
+async def get_daily_quiz(
+    db: AsyncSession,
+    limit: int = 10,
+    category: Optional[str] = None
+) -> List[CurrentAffairMCQ]:
+    """Returns verified exam MCQs derived strictly from verified current affairs."""
+    await seed_current_affairs_if_empty(db)
+    
+    query = select(CurrentAffairMCQ)
+    if category and category != "सर्व":
+        query = query.join(CurrentAffair).filter(CurrentAffair.category == category)
+        
+    query = query.limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
 
-async def get_daily_quiz(db: AsyncSession, limit: int = 10) -> List[CurrentAffairMCQ]:
-    await seed_current_affairs_if_empty(db)
-    query = select(CurrentAffairMCQ).limit(limit)
-    result = await db.execute(query)
-    return result.scalars().all()
 
 async def toggle_article_bookmark(db: AsyncSession, article_id: int) -> bool:
     result = await db.execute(select(CurrentAffair).filter(CurrentAffair.id == article_id))

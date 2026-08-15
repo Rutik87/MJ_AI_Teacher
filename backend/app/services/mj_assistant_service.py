@@ -272,8 +272,8 @@ async def process_mj_conversation(
         emotion = "explaining"
     else:
         # If user explicitly asked about their book/file and no context was retrieved
-        if book_id is not None or any(w in query_lower for w in ["माझ्या पुस्तकात", "माझ्या नोट्स", "पुस्तकानुसार", "फाईलमध्ये"]):
-            final_reply = "माझ्या उपलब्ध अभ्याससामग्रीमध्ये या प्रश्नाचे पुरेसे संदर्भ मिळाले नाहीत (माहिती उपलब्ध नाही)."
+        if book_id is not None or any(w in query_lower for w in ["माझ्या पुस्तकात", "माझ्या नोट्स", "पुस्तकानुसार", "फाईलमध्ये", "notes", "book"]):
+            final_reply = "या प्रश्नाचे पुरेसे उत्तर तुमच्या अपलोड केलेल्या स्रोतामध्ये सापडले नाही."
             emotion = "neutral"
         else:
             answer = await llm_provider.generate_chat_response(

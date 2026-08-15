@@ -78,6 +78,16 @@ class TXTExtractor:
             "is_scanned": False
         }
 
+    @classmethod
+    def extract_from_text(cls, text: str, title: str = "") -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        Directly extracts pages and chapters from a text string with Marathi Unicode normalization.
+        """
+        norm_text = unicodedata.normalize("NFKC", text)
+        pages_data = cls._extract_pages(norm_text)
+        chapters_data = cls._detect_chapters(norm_text, pages_data)
+        return pages_data, chapters_data
+
     @staticmethod
     def _extract_pages(full_text: str) -> List[Dict[str, Any]]:
         """

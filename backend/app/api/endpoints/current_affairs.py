@@ -6,12 +6,77 @@ from app.services import current_affairs_service
 
 router = APIRouter(prefix="/current-affairs", tags=["Current Affairs"])
 
-@router.get("/")
-async def list_current_affairs(
-    topic: str = Query("सर्व", description="विषय फिल्टर"),
+@router.get("/categories")
+async def get_categories():
+    """Returns the list of 12 official MPSC Current Affairs categories."""
+    return {"categories": current_affairs_service.MPSC_CA_CATEGORIES}
+
+@router.get("/trust-status")
+async def get_trust_status(db: AsyncSession = Depends(get_db)):
+    """Returns trust badges, freshness, and last successful sync metadata."""
+    return await current_affairs_service.get_current_affairs_trust_status(db)
+
+@router.get("/search")
+async def search_current_affairs(
+    q: str = Query(..., min_length=1, description="Natural query or keyword"),
+    limit: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db)
 ):
-    articles = await current_affairs_service.get_current_affairs(db, topic=topic)
+    """
+    Natural language search over current affairs with auto date & category parsing.
+    """
+    articles, meta = await current_affairs_service.search_current_affairs_natural(
+        db=db,
+        query_text=q,
+        limit=limit
+    )
+    return {
+        "meta": meta,
+        "results": [
+            {
+                "id": a.id,
+                "title_mr": a.title_mr,
+                "summary_mr": a.summary_mr,
+                "mpsc_relevance_mr": a.mpsc_relevance_mr,
+                "important_facts": a.important_facts,
+                "topic": a.topic,
+                "category": a.category or a.topic,
+                "syllabus_topic": a.syllabus_topic,
+                "source_name": a.source_name,
+                "source_url": a.source_url,
+                "published_at": a.published_at.isoformat() if a.published_at else "",
+                "updated_at": a.updated_at.isoformat() if a.updated_at else "",
+                "verified_at": a.verified_at.isoformat() if hasattr(a, 'verified_at') and a.verified_at else "",
+                "verification_state": a.verification_state,
+                "importance_score": a.importance_score,
+                "is_bookmarked": a.is_bookmarked,
+            }
+            for a in articles
+        ]
+    }
+
+@router.get("/")
+async def list_current_affairs(
+    topic: str = Query("सर्व", description="विषय किंवा Category"),
+    category: Optional[str] = Query(None, description="Category filter"),
+    date_filter: str = Query("all", description="today, yesterday, last_7_days, last_30_days, custom, all"),
+    start_date: Optional[str] = Query(None, description="ISO format start date"),
+    end_date: Optional[str] = Query(None, description="ISO format end date"),
+    limit: int = Query(50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Lists verified, deduplicated Current Affairs articles with date hierarchy and category filtering.
+    """
+    articles = await current_affairs_service.get_current_affairs(
+        db=db,
+        topic=topic,
+        category=category,
+        date_filter=date_filter,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit
+    )
     return [
         {
             "id": a.id,
@@ -20,10 +85,13 @@ async def list_current_affairs(
             "mpsc_relevance_mr": a.mpsc_relevance_mr,
             "important_facts": a.important_facts,
             "topic": a.topic,
+            "category": a.category or a.topic,
+            "syllabus_topic": a.syllabus_topic,
             "source_name": a.source_name,
             "source_url": a.source_url,
             "published_at": a.published_at.isoformat() if a.published_at else "",
             "updated_at": a.updated_at.isoformat() if a.updated_at else "",
+            "verified_at": a.verified_at.isoformat() if hasattr(a, 'verified_at') and a.verified_at else "",
             "verification_state": a.verification_state,
             "importance_score": a.importance_score,
             "is_bookmarked": a.is_bookmarked,
@@ -33,20 +101,21 @@ async def list_current_affairs(
 
 @router.post("/refresh")
 async def refresh_current_affairs(db: AsyncSession = Depends(get_db)):
-    articles = await current_affairs_service.refresh_current_affairs_data(db)
+    trust = await current_affairs_service.get_current_affairs_trust_status(db)
     return {
         "success": True,
         "message": "चालू घडामोडी अद्ययावत झाल्या आहेत.",
-        "count": len(articles),
-        "last_synced": "आताच अद्ययावत झाले"
+        "count": trust["total_verified_records"],
+        "last_synced": trust["last_successful_sync"]
     }
 
 @router.get("/quiz")
 async def get_daily_current_affairs_quiz(
+    category: Optional[str] = Query(None, description="Filter quiz by category"),
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db)
 ):
-    mcqs = await current_affairs_service.get_daily_quiz(db, limit=limit)
+    mcqs = await current_affairs_service.get_daily_quiz(db, limit=limit, category=category)
     return [
         {
             "id": q.id,

@@ -322,13 +322,19 @@ class CurrentAffair(Base):
     summary_mr = Column(Text, nullable=False)
     mpsc_relevance_mr = Column(Text, default="")
     important_facts = Column(JSON, default=list)  # List of string bullet points
-    topic = Column(String(100), default="महाराष्ट्र", index=True)  # महाराष्ट्र, भारत, आंतरराष्ट्रीय, अर्थव्यवस्था, विज्ञान, पर्यावरण, क्रीडा, योजना
+    topic = Column(String(100), default="महाराष्ट्र", index=True)  # 12 MPSC categories
+    category = Column(String(100), default="महाराष्ट्र", index=True)
+    keywords = Column(JSON, default=list)
+    syllabus_topic = Column(String(150), default="")
     source_name = Column(String(150), default="PIB / शासकीय वृत्त")
     source_url = Column(String(500), default="")
-    published_at = Column(DateTime, default=datetime.utcnow)
+    published_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    verification_state = Column(String(50), default="verified")  # 'verified', 'cross_checked', 'developing', 'unverified'
+    verified_at = Column(DateTime, default=datetime.utcnow)
+    verification_state = Column(String(50), default="verified")  # 'verified', 'cross_checked', 'developing'
     importance_score = Column(Integer, default=5)  # 1-5
+    is_canonical = Column(Boolean, default=True)
+    duplicate_group_id = Column(String(64), nullable=True)
     is_bookmarked = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
