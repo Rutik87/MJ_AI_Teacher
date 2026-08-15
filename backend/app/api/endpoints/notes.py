@@ -18,6 +18,40 @@ from app.utils.logger import logger
 
 router = APIRouter(prefix="/notes", tags=["AI Handwritten Notes Generator"])
 
+@router.get("/health")
+async def get_notes_health(db: AsyncSession = Depends(get_db)):
+    """Diagnostic health check for Handwritten Notes engine."""
+    q = select(HandwrittenNote)
+    res = await db.execute(q)
+    notes = res.scalars().all()
+    ready_count = sum(1 for n in notes if n.status == "ready")
+    return {
+        "status": "active",
+        "total_notes": len(notes),
+        "ready_notes": ready_count,
+        "pdf_engine": "ReportLab 4.0 (Devanagari Authentic Ruled Sheet)"
+    }
+
+@router.get("/all")
+async def list_all_user_notes(user_id: int = 1, db: AsyncSession = Depends(get_db)):
+    """Lists all generated handwritten notes for the user."""
+    q = select(HandwrittenNote).where(HandwrittenNote.user_id == user_id).order_by(HandwrittenNote.created_at.desc())
+    res = await db.execute(q)
+    notes = res.scalars().all()
+    return [
+        {
+            "id": n.id,
+            "book_id": n.book_id,
+            "status": n.status,
+            "title_mr": n.title_mr,
+            "total_pages": n.total_pages,
+            "chapters_count": len(n.chapters_data or []),
+            "has_pdf": bool(n.pdf_path),
+            "created_at": n.created_at.isoformat() if n.created_at else None
+        }
+        for n in notes
+    ]
+
 @router.post("/generate/{book_id}")
 async def generate_handwritten_notes(
     book_id: int,

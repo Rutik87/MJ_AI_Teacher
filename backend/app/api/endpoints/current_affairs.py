@@ -11,6 +11,17 @@ async def get_categories():
     """Returns the list of 12 official MPSC Current Affairs categories."""
     return {"categories": current_affairs_service.MPSC_CA_CATEGORIES}
 
+@router.get("/health")
+async def get_current_affairs_health(db: AsyncSession = Depends(get_db)):
+    """Exposes provider status, last sync date, latest article date, and count."""
+    status = await current_affairs_service.get_current_affairs_trust_status(db)
+    return {
+        "provider_status": "active",
+        "last_successful_fetch": status.get("last_successful_sync"),
+        "latest_article_date": status.get("last_updated_at"),
+        "number_of_current_articles": status.get("total_verified_records", 0)
+    }
+
 @router.get("/trust-status")
 async def get_trust_status(db: AsyncSession = Depends(get_db)):
     """Returns trust badges, freshness, and last successful sync metadata."""

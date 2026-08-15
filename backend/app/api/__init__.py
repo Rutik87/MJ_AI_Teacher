@@ -11,6 +11,7 @@ from app.api.endpoints.mj_voice import router as mj_router
 from app.api.endpoints.sync import router as sync_router
 from app.api.endpoints.notes import router as notes_router
 from app.api.endpoints.gemini_live_ws import router as gemini_live_ws_router
+from app.api.endpoints.rag import router as rag_router
 
 __all__ = [
     "books_router",
@@ -25,5 +26,6 @@ __all__ = [
     "mj_router",
     "sync_router",
     "notes_router",
-    "gemini_live_ws_router"
+    "gemini_live_ws_router",
+    "rag_router"
 ]
