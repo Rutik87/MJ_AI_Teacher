@@ -28,18 +28,18 @@ class BookBase(BaseModel):
 class BookResponse(BookBase):
     id: int
     original_filename: str
-    subject_id: Optional[int]
-    total_pages: int
-    file_size_bytes: int
-    is_scanned: bool
-    status: str
-    status_message: str
-    progress_percent: float
-    current_page_processing: int
-    total_chunks: int
-    is_indexed: bool
+    subject_id: Optional[int] = None
+    total_pages: int = 0
+    file_size_bytes: int = 0
+    is_scanned: bool = False
+    status: str = "pending"
+    status_message: str = ""
+    progress_percent: float = 0.0
+    current_page_processing: int = 0
+    total_chunks: int = 0
+    is_indexed: bool = False
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 

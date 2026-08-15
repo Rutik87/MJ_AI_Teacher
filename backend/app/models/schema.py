@@ -79,6 +79,10 @@ class Book(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    @property
+    def is_indexed(self) -> bool:
+        return self.status == ProcessingStatus.COMPLETED
+
     # Relationships
     subject_rel = relationship("Subject", back_populates="books")
     chapters = relationship("Chapter", back_populates="book", cascade="all, delete-orphan")
@@ -247,6 +251,10 @@ class RevisionItem(Base):
     last_reviewed = Column(DateTime, default=datetime.utcnow)
     next_review_due = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    @property
+    def is_due(self) -> bool:
+        return datetime.utcnow() >= self.next_review_due
 
     user = relationship("User", back_populates="revision_items")
 

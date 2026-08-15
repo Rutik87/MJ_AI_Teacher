@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
     
     # Initialize durable cloud storage bucket and restore vector index from DB
     await cloud_storage.ensure_bucket_exists()
-    vector_store.load_from_db()
+    await vector_store.load_from_db()
     
     yield
     logger.info("MPSC AI Study Assistant shutting down.")

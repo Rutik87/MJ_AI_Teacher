@@ -6,6 +6,7 @@ from app.services.rag.vector_store import ModularVectorStore
 from app.database import AsyncSessionLocal, init_db
 from app.models.schema import Book, DocumentChunk, Subject, ProcessingStatus
 from app.config import settings
+from sqlalchemy import delete
 
 @pytest.mark.asyncio
 async def test_cloud_storage_local_fallback():
@@ -86,6 +87,11 @@ async def test_database_vector_restore():
     await init_db()
     
     async with AsyncSessionLocal() as session:
+        # Clean up any existing test records
+        await session.execute(delete(DocumentChunk).where(DocumentChunk.chunk_uuid == "chunk_polity_001"))
+        await session.execute(delete(Book).where(Book.id == 777))
+        await session.commit()
+
         # Create test book & chunk in unified database
         book = Book(
             id=777,

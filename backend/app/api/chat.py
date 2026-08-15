@@ -2,6 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.schema import User, ChatSession, ChatMessage
@@ -20,7 +21,10 @@ async def list_chat_sessions(user_id: int = 1, db: AsyncSession = Depends(get_db
     Returns all chat conversation sessions for the user.
     """
     result = await db.execute(
-        select(ChatSession).where(ChatSession.user_id == user_id).order_by(ChatSession.updated_at.desc())
+        select(ChatSession)
+        .options(selectinload(ChatSession.messages))
+        .where(ChatSession.user_id == user_id)
+        .order_by(ChatSession.updated_at.desc())
     )
     sessions = result.scalars().all()
     return sessions
