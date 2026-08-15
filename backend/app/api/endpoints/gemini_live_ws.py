@@ -30,14 +30,17 @@ async def gemini_live_websocket(websocket: WebSocket):
     """
     await websocket.accept()
     logger.info("[LIVE-WS] client connected")
-
-    # Verify API Key availability
-    client = gemini_live_service.get_client()
-    api_key = settings.GEMINI_API_KEY or ""
-    if not api_key:
-        logger.warning("[LIVE-WS] GEMINI_API_KEY is not configured on server.")
     logger.info("[LIVE-WS] auth passed")
 
+    # Send instant ready frame to client
+    await websocket.send_json({
+        "type": "ready",
+        "model": settings.GEMINI_LIVE_MODEL,
+        "voice": settings.GEMINI_LIVE_VOICE,
+        "message": "Gemini Live Realtime Assistant तयार आहे."
+    })
+
+    client = gemini_live_service.get_client()
     config = gemini_live_service.get_live_config()
     
     # Try preferred live models
@@ -51,7 +54,7 @@ async def gemini_live_websocket(websocket: WebSocket):
         try:
             logger.info(f"[LIVE-WS] Attempting live connection to model: {model_candidate}")
             connect_coro = client.aio.live.connect(model=model_candidate, config=config)
-            session_ctx = await asyncio.wait_for(connect_coro.__aenter__(), timeout=5.0)
+            session_ctx = await asyncio.wait_for(connect_coro.__aenter__(), timeout=3.0)
             session = session_ctx
             active_model = model_candidate
             logger.info(f"[LIVE-WS] Gemini connection established with model '{active_model}' and voice '{settings.GEMINI_LIVE_VOICE}'")

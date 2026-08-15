@@ -43,9 +43,9 @@ async def list_all_user_notes(user_id: int = 1, db: AsyncSession = Depends(get_d
             "id": n.id,
             "book_id": n.book_id,
             "status": n.status,
-            "title_mr": n.title_mr,
-            "total_pages": n.total_pages,
-            "chapters_count": len(n.chapters_data or []),
+            "title": n.title,
+            "page_count": n.page_count,
+            "chapter_count": n.chapter_count or len(n.content_json or []),
             "has_pdf": bool(n.pdf_path),
             "created_at": n.created_at.isoformat() if n.created_at else None
         }
