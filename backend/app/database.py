@@ -187,11 +187,14 @@ async def init_db():
         import app.models.schema
         from app.migrations import run_schema_migrations
         
-        async with async_engine.begin() as conn:
-            # 1. Create any missing tables
-            await conn.run_sync(Base.metadata.create_all)
+        async with async_engine.connect() as conn:
+            # 1. Create any missing tables in its own transaction
+            async with conn.begin():
+                await conn.run_sync(Base.metadata.create_all)
+            
             # 2. Run idempotent column migrations for existing tables
-            await run_schema_migrations(conn)
+            async with conn.begin():
+                await run_schema_migrations(conn)
             
         logger.info("Database connection established, migrations applied, and all schemas initialized successfully.")
     except Exception as e:
