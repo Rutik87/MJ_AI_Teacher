@@ -1,7 +1,7 @@
 """
 Comprehensive Production Real-Environment Diagnostic & Health Audit Script.
 Tests:
-1. Health, RAG, Current Affairs, Books, Progress, Revision, Tests, Notes HTTP endpoints
+1. Health, RAG Health, Current Affairs Health, Notes Health, Books, Progress HTTP endpoints
 2. Real Production WebSocket: wss://mj-ai-teacher.onrender.com/api/mj/live-ws
 3. Live Audio/Text round-trip, barge-in, and turn-taking
 """
@@ -19,7 +19,7 @@ WS_PROD_URL = "wss://mj-ai-teacher.onrender.com/api/mj/live-ws"
 
 def audit_http_endpoints():
     print("=" * 60)
-    print("PHASE 1: PRODUCITON HTTP ENDPOINT HEALTH AUDIT")
+    print("PHASE 1: PRODUCTION REAL HEALTH & DIAGNOSTIC ENDPOINTS AUDIT")
     print("=" * 60)
 
     ctx = ssl.create_default_context()
@@ -29,12 +29,15 @@ def audit_http_endpoints():
     endpoints = [
         ("GET", "/", None),
         ("GET", "/api/health", None),
+        ("GET", "/api/rag/health", None),
+        ("GET", "/api/current-affairs/health", None),
+        ("GET", "/api/notes/health", None),
+        ("GET", "/api/notes/all?user_id=1", None),
         ("GET", "/api/books", None),
         ("GET", "/api/current-affairs", None),
-        ("GET", "/api/progress/summary", None),
-        ("GET", "/api/revision/today", None),
-        ("GET", "/api/tests/daily", None),
-        ("GET", "/api/notes/all?user_id=1", None),
+        ("GET", "/api/progress/summary?user_id=1", None),
+        ("GET", "/api/revision/today?user_id=1", None),
+        ("GET", "/api/tests/recent?user_id=1", None),
     ]
 
     for method, ep, body_data in endpoints:
@@ -57,10 +60,10 @@ def audit_http_endpoints():
                 except Exception:
                     text = str(raw)
                 print(f"[SUCCESS {resp.status}] {ep} ({elapsed}ms)")
-                print(f"  Response: {text[:200]}")
+                print(f"  Response: {text[:160]}")
         except urllib.error.HTTPError as e:
             elapsed = int((time.time() - start) * 1000)
-            err_body = e.read().decode("utf-8", errors="replace")[:200]
+            err_body = e.read().decode("utf-8", errors="replace")[:160]
             print(f"[HTTP {e.code}] {ep} ({elapsed}ms)")
             print(f"  Error Body: {err_body}")
         except Exception as e:
@@ -94,7 +97,7 @@ async def audit_websocket():
             received_transcripts = []
             
             while True:
-                resp = await asyncio.wait_for(ws.recv(), timeout=30)
+                resp = await asyncio.wait_for(ws.recv(), timeout=25)
                 data = json.loads(resp)
                 msg_type = data.get("type")
 
@@ -110,7 +113,8 @@ async def audit_websocket():
                     break
 
             print(f"Total audio chunks received: {received_audio_count}")
-            print(f"Assistant Marathi transcript: {''.join(received_transcripts)}")
+            if received_transcripts:
+                print(f"Assistant Marathi transcript: {''.join(received_transcripts)[:150]}")
 
     except Exception as e:
         print(f"[WS CONNECTION/SESSION FAILED]: {type(e)} - {e}")
