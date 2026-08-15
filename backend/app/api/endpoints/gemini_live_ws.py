@@ -6,6 +6,7 @@ barge-in interruption broadcasts, tool calling, and strict structured logging.
 
 import asyncio
 import os
+from pathlib import Path
 import json
 import base64
 from typing import Optional
@@ -43,19 +44,21 @@ async def _handle_assistant_turn(websocket: WebSocket, query: str):
         logger.info("[LIVE-WS] Gemini audio received")
         audio_res = await voice_service.generate_voice(
             text=ai_reply,
-            language="mr",
-            voice_profile="mj_primary"
+            emotion="friendly"
         )
-        if audio_res and audio_res.get("file_path") and os.path.exists(audio_res["file_path"]):
-            with open(audio_res["file_path"], "rb") as af:
-                raw_audio = af.read()
-            b64 = base64.b64encode(raw_audio).decode("utf-8")
-            await websocket.send_json({
-                "type": "audio",
-                "data": b64,
-                "mime_type": "audio/wav"
-            })
-            logger.info("[LIVE-WS] audio forwarded to Flutter")
+        if audio_res and audio_res.get("audio_url"):
+            filename = audio_res["audio_url"].split("/")[-1]
+            file_path = Path(settings.AUDIO_CACHE_PATH) / filename
+            if file_path.exists():
+                with open(file_path, "rb") as af:
+                    raw_audio = af.read()
+                b64 = base64.b64encode(raw_audio).decode("utf-8")
+                await websocket.send_json({
+                    "type": "audio",
+                    "data": b64,
+                    "mime_type": "audio/mp3"
+                })
+                logger.info("[LIVE-WS] audio forwarded to Flutter")
 
         # 3. Turn complete
         await websocket.send_json({"type": "turn_complete"})

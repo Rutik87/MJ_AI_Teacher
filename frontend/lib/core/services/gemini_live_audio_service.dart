@@ -109,12 +109,16 @@ class GeminiLiveAudioService extends ChangeNotifier {
         debugPrint('[GeminiLiveAudioService] Gemini Live is ready (Model: ${data['model']}, Voice: ${data['voice']})');
         startMicrophone();
       } else if (msgType == 'audio') {
-        // Incoming audio chunk from Gemini Live (Aoede Voice)
         final rawB64 = data['data'] as String?;
+        final mimeType = (data['mime_type'] as String? ?? '').toLowerCase();
         if (rawB64 != null && rawB64.isNotEmpty) {
           _state = GeminiLiveState.speaking;
-          final pcmBytes = base64.decode(rawB64);
-          _playAudioBytes(pcmBytes);
+          final bytes = base64.decode(rawB64);
+          if (mimeType.contains('pcm')) {
+            _playAudioBytes(bytes);
+          } else {
+            _audioPlayer.play(BytesSource(bytes));
+          }
         }
       } else if (msgType == 'transcript') {
         final text = data['text'] as String? ?? '';
