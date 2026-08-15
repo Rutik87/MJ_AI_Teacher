@@ -66,6 +66,20 @@ app.include_router(current_affairs_router, prefix=settings.API_PREFIX)
 app.include_router(mj_router, prefix=settings.API_PREFIX)
 app.include_router(sync_router, prefix=settings.API_PREFIX)
 
+# Mount Voice Cloning Evaluation Lab
+from voice_lab.lab_server import router as voice_lab_router
+from fastapi.responses import FileResponse
+from pathlib import Path
+
+app.include_router(voice_lab_router)
+
+@app.get("/voice-lab")
+async def serve_voice_lab():
+    lab_html = Path("voice_lab/static/index.html")
+    if lab_html.exists():
+        return FileResponse(lab_html, media_type="text/html")
+    return {"error": "Voice Lab interface not found"}
+
 @app.get("/")
 async def root():
     return {
