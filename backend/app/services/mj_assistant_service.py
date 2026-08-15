@@ -147,7 +147,7 @@ async def process_mj_conversation(
     resolved_query, last_topic = resolve_context_topic(raw_query, conversation_history)
 
     # 4. Casual Chat & Empathy Intent (FRIEND Mode)
-    if any(w in query_lower for w in ["mood नाही", "मूड नाही", "इच्छा नाही", "कंटाळा"]):
+    if any(w in query_lower for w in ["mood नाही", "मूड नाही", "इच्छा नाही", "कंटाळा", "समजत नाही", "काही समजत नाही", "mood off", "samjat nahi", "kahi samjat nahi", "kantala", "bored"]):
         reply = random.choice(CASUAL_RESPONSES["mood_off"])
         speech_text = clean_text_for_speech(reply)
         voice_res = await voice_service.generate_voice(speech_text, emotion="empathetic", speed=0.92)
@@ -162,7 +162,7 @@ async def process_mj_conversation(
             "sources": []
         }
 
-    if any(w in query_lower for w in ["काय चाललंय", "कशी आहेस", "काय करतेस", "बोल ना", "जेवलीस का"]):
+    if any(w in query_lower for w in ["काय चाललंय", "कशी आहेस", "काय करतेस", "बोल ना", "जेवलीस का", "kasa ahes", "kashi ahes", "kay chalalay", "kasa chalay", "bol na", "how are you"]):
         reply = random.choice(CASUAL_RESPONSES["general_chat"])
         speech_text = clean_text_for_speech(reply)
         voice_res = await voice_service.generate_voice(speech_text, emotion="friendly", speed=1.0)
@@ -178,7 +178,7 @@ async def process_mj_conversation(
         }
 
     # 5. Study Planner Intent (STUDY Mode)
-    if any(w in query_lower for w in ["काय अभ्यास करू", "अभ्यास काय करू", "study plan", "नियोजन", "वेळापत्रक"]):
+    if any(w in query_lower for w in ["काय अभ्यास करू", "अभ्यास काय करू", "study plan", "नियोजन", "वेळापत्रक", "अभ्यास करूया", "abhyas karuya", "abhyas karu", "study karuya", "study"]):
         reply = (
             "चल, आजचा प्लॅन बघूया! आज तुझ्या वेळापत्रकानुसार राज्यघटनेची (Polity) उजळणी बाकी आहे "
             "आणि इतिहासाचे 20 MCQs सोडवायचे आहेत. आधी 20 मिनिटे राज्यघटना करूया का? 😄"

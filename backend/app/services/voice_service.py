@@ -116,7 +116,8 @@ class VoiceService:
                     "speaker": self.speaker_name,
                     "emotion": emotion,
                     "speed": speed,
-                    "success": False
+                    "success": False,
+                    "status_message": "आवाज तयार करता आला नाही."
                 }
         except Exception as e:
             logger.error(f"Voice generation error in VoiceService: {e}")
@@ -130,7 +131,8 @@ class VoiceService:
                 "emotion": emotion,
                 "speed": speed,
                 "success": False,
-                "error": str(e)
+                "error": str(e),
+                "status_message": "आवाज तयार करता आला नाही."
             }
 
     def get_voice_profile(self) -> Dict[str, Any]:
