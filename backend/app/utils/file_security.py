@@ -23,13 +23,13 @@ def sanitize_filename(filename: str) -> str:
 
 def validate_pdf_file(filename: str, content_type: str, file_size_bytes: int):
     """
-    Validates uploaded file against size and extension policies.
+    Validates uploaded file against size and extension policies (.pdf, .txt).
     """
     ext = Path(filename).suffix.lower()
     if ext not in settings.ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"अवैध फाईल प्रकार ({ext}). फक्त PDF फाईल्स अनुमत आहेत."
+            detail=f"अवैध फाईल प्रकार ({ext}). फक्त PDF आणि TXT फाईल्स अनुमत आहेत."
         )
     
     max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
@@ -38,3 +38,5 @@ def validate_pdf_file(filename: str, content_type: str, file_size_bytes: int):
             status_code=400,
             detail=f"फाईल आकार खूप मोठा आहे. कमाल मर्यादा {settings.MAX_UPLOAD_SIZE_MB}MB आहे."
         )
+
+validate_document_file = validate_pdf_file

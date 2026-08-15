@@ -384,7 +384,7 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
                 const Icon(Icons.cloud_upload_outlined, color: Colors.white, size: 20),
                 const SizedBox(width: 8),
                 Text(
-                  '+ Cloud वर PDF जोडा',
+                  '+ पुस्तक / नोट्स जोडा (PDF/TXT)',
                   style: GoogleFonts.notoSansDevanagari(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
@@ -407,7 +407,7 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
           Icon(Icons.cloud_queue, size: 56, color: Colors.white.withOpacity(0.2)),
           const SizedBox(height: 12),
           Text(
-            'कोणतेही पुस्तक आढळले नाही',
+            'कोणतेही पुस्तक किंवा नोट्स आढळले नाहीत',
             style: GoogleFonts.notoSansDevanagari(fontSize: 14, color: Colors.white60),
           ),
         ],
@@ -424,13 +424,16 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
     SyncService syncService,
     ProgressProvider progressProv,
   ) {
-    final colors = [
-      const Color(0xFF2979FF),
-      const Color(0xFF00E676),
-      const Color(0xFFFF9100),
-      const Color(0xFFD500F9),
-      const Color(0xFFFF5252),
-    ];
+    final isTxt = book.sourceType == 'txt' || book.originalFilename.toLowerCase().endsWith('.txt');
+    final colors = isTxt
+        ? [const Color(0xFF00E5FF), const Color(0xFF00B0FF)]
+        : [
+            const Color(0xFF2979FF),
+            const Color(0xFF00E676),
+            const Color(0xFFFF9100),
+            const Color(0xFFD500F9),
+            const Color(0xFFFF5252),
+          ];
     final color = colors[index % colors.length];
     final double percent = (book.progressPercent / 100.0).clamp(0.0, 1.0);
     final isDownloaded = offlineService.isBookDownloaded(book.id);
@@ -452,19 +455,23 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
         ),
         child: Row(
           children: [
-            // Book Icon Capsule
+            // Book Icon Capsule (PDF vs TXT)
             Container(
               width: 44,
               height: 52,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [color.withOpacity(0.8), color],
+                  colors: isTxt ? [const Color(0xFF0091EA), const Color(0xFF00E5FF)] : [color.withOpacity(0.8), color],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.picture_as_pdf, color: Colors.white, size: 24),
+              child: Icon(
+                isTxt ? Icons.description : Icons.picture_as_pdf,
+                color: Colors.white,
+                size: 24,
+              ),
             ),
             const SizedBox(width: 14),
 
@@ -511,7 +518,7 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        '${book.totalPages} पाने • ${(book.fileSizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB',
+                        '${isTxt ? "TXT नोट्स" : "${book.totalPages} पाने"} • ${(book.fileSizeBytes / (1024 * 1024)).toStringAsFixed(2)} MB',
                         style: GoogleFonts.poppins(fontSize: 10, color: Colors.white54),
                       ),
                       Row(

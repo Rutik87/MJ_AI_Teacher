@@ -78,6 +78,7 @@ class Book(Base):
     total_chunks = Column(Integer, default=0)
     checksum = Column(String(64), index=True, nullable=True)  # SHA-256 for duplicate detection
     storage_path = Column(String(500), nullable=True)  # Path in Supabase Storage bucket
+    source_type = Column(String(20), default="pdf")  # 'pdf' or 'txt'
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

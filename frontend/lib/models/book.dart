@@ -12,6 +12,7 @@ class BookModel {
   final double progressPercent;
   final int currentPageProcessing;
   final int totalChunks;
+  final String sourceType;
   final bool isIndexed;
   final String createdAt;
 
@@ -29,6 +30,7 @@ class BookModel {
     required this.progressPercent,
     required this.currentPageProcessing,
     required this.totalChunks,
+    this.sourceType = 'pdf',
     required this.isIndexed,
     required this.createdAt,
   });
@@ -48,6 +50,7 @@ class BookModel {
       progressPercent: (json['progress_percent'] as num?)?.toDouble() ?? 0.0,
       currentPageProcessing: json['current_page_processing'] ?? 0,
       totalChunks: json['total_chunks'] ?? 0,
+      sourceType: json['source_type'] ?? (json['original_filename']?.toString().toLowerCase().endsWith('.txt') == true ? 'txt' : 'pdf'),
       isIndexed: json['is_indexed'] ?? false,
       createdAt: json['created_at'] ?? '',
     );

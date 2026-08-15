@@ -29,6 +29,7 @@ TABLE_COLUMNS_SPEC = {
         ("total_chunks", "INTEGER", "INTEGER", "DEFAULT 0"),
         ("checksum", "VARCHAR(64)", "VARCHAR(64)", "DEFAULT NULL"),
         ("storage_path", "VARCHAR(500)", "VARCHAR(500)", "DEFAULT NULL"),
+        ("source_type", "VARCHAR(20)", "VARCHAR(20)", "DEFAULT 'pdf'"),
         ("created_at", "TIMESTAMP", "DATETIME", "DEFAULT CURRENT_TIMESTAMP"),
         ("updated_at", "TIMESTAMP", "DATETIME", "DEFAULT CURRENT_TIMESTAMP"),
     ],

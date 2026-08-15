@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     
     # Security
     MAX_UPLOAD_SIZE_MB: int = 150
-    ALLOWED_EXTENSIONS: list[str] = [".pdf"]
+    ALLOWED_EXTENSIONS: list[str] = [".pdf", ".txt"]
 
     model_config = {"env_file": ".env", "extra": "allow"}
 

@@ -19,6 +19,7 @@ from app.schemas.pydantic_models import (
 from app.utils.file_security import sanitize_filename, validate_pdf_file
 from app.utils.logger import logger
 from app.services.pdf.extractor import pdf_extractor
+from app.services.text.txt_extractor import txt_extractor
 from app.services.rag.chunker import chunker
 from app.services.rag.vector_store import vector_store
 from app.services.storage.cloud_storage import cloud_storage
@@ -89,7 +90,7 @@ async def create_custom_subject(data: SubjectCreate, db: AsyncSession = Depends(
 
 def _background_process_pdf(book_id: int, file_path: str, storage_path: Optional[str] = None):
     """
-    Background worker that runs PDF text extraction, OCR, chunking, and durable PostgreSQL embedding.
+    Background worker that runs PDF / TXT extraction, chunking, and durable PostgreSQL embedding.
     """
     db = SyncSessionLocal()
     try:
@@ -97,45 +98,53 @@ def _background_process_pdf(book_id: int, file_path: str, storage_path: Optional
         if not book:
             return
 
+        is_txt = (getattr(book, 'source_type', 'pdf') == 'txt') or file_path.lower().endswith('.txt')
+
         # Ensure local file exists or download from persistent Supabase Storage
         if not os.path.exists(file_path) and storage_path:
             try:
                 logger.info(f"Downloading [{storage_path}] from Supabase Storage for processing...")
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                pdf_bytes = loop.run_until_complete(cloud_storage.download_file(storage_path))
+                doc_bytes = loop.run_until_complete(cloud_storage.download_file(storage_path))
                 loop.close()
                 Path(file_path).parent.mkdir(parents=True, exist_ok=True)
                 with open(file_path, "wb") as f:
-                    f.write(pdf_bytes)
+                    f.write(doc_bytes)
             except Exception as dl_err:
-                logger.error(f"Failed to fetch PDF from Supabase storage: {dl_err}")
+                logger.error(f"Failed to fetch file from Supabase storage: {dl_err}")
                 book.status = ProcessingStatus.FAILED
                 book.status_message = "Persistent storage वरून फाईल लोड करताना त्रुटी आली."
                 db.commit()
                 return
 
         book.status = ProcessingStatus.EXTRACTING
-        book.status_message = "PDF मधील मजकूर काढत आहे..."
+        book.status_message = "TXT फाईल मधील मजकूर काढत आहे..." if is_txt else "PDF मधील मजकूर काढत आहे..."
         book.progress_percent = 10.0
         db.commit()
 
-        # Extract PDF content
+        # Extract content (TXT or PDF)
         def on_page_progress(current_page, total_pages):
             pct = 10.0 + (current_page / max(total_pages, 1)) * 50.0
             book.progress_percent = round(pct, 1)
             book.current_page_processing = current_page
             book.total_pages = total_pages
-            book.status_message = f"पान {current_page} / {total_pages} तपासत आहे..."
+            book.status_message = f"भाग/पान {current_page} / {total_pages} तपासत आहे..."
             db.commit()
 
-        extracted_data = pdf_extractor.process_pdf_file(
-            file_path=file_path,
-            progress_callback=on_page_progress
-        )
+        if is_txt:
+            extracted_data = txt_extractor.process_txt_file(
+                file_path=file_path,
+                progress_callback=on_page_progress
+            )
+        else:
+            extracted_data = pdf_extractor.process_pdf_file(
+                file_path=file_path,
+                progress_callback=on_page_progress
+            )
 
         book.total_pages = extracted_data["total_pages"]
-        book.is_scanned = extracted_data["is_scanned"]
+        book.is_scanned = extracted_data.get("is_scanned", False)
         book.status = ProcessingStatus.CHUNKING
         book.status_message = "अभ्यास घटकांचे विभाजन (Chunking) करत आहे..."
         book.progress_percent = 70.0
@@ -204,7 +213,7 @@ def _background_process_pdf(book_id: int, file_path: str, storage_path: Optional
         book.progress_percent = 100.0
         book.is_indexed = True
         db.commit()
-        logger.info(f"Successfully processed and indexed book id={book.id}, title='{book.title}', chunks={len(chunks)}")
+        logger.info(f"Successfully processed and indexed book id={book.id}, title='{book.title}', chunks={len(chunks)}, type={'TXT' if is_txt else 'PDF'}")
 
     except Exception as e:
         logger.error(f"Error processing book id={book_id}: {e}")
@@ -229,13 +238,16 @@ async def upload_book(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Uploads a new PDF book, uploads it to Supabase Storage, and starts background extraction.
-    Includes duplicate checksum protection and user ownership assignment.
+    Uploads a new PDF or TXT book, uploads it to Supabase Storage, and starts background extraction.
+    Includes duplicate checksum protection, user ownership assignment, and format normalization.
     """
-    filename = sanitize_filename(file.filename or "book.pdf")
+    filename = sanitize_filename(file.filename or "document.pdf")
     contents = await file.read()
     file_size = len(contents)
-    validate_pdf_file(filename, file.content_type or "application/pdf", file_size)
+    validate_pdf_file(filename, file.content_type or "application/octet-stream", file_size)
+
+    ext = Path(filename).suffix.lower()
+    source_type = "txt" if ext == ".txt" else "pdf"
 
     # 1. Checksum generation for duplicate protection
     checksum = cloud_storage.calculate_checksum(contents)
@@ -251,8 +263,9 @@ async def upload_book(
 
     # 2. Upload to Supabase Storage persistent bucket
     storage_path = f"books/{checksum[:16]}_{filename}"
+    content_type = "text/plain; charset=utf-8" if source_type == "txt" else "application/pdf"
     try:
-        await cloud_storage.upload_file(contents, storage_path, content_type="application/pdf")
+        await cloud_storage.upload_file(contents, storage_path, content_type=content_type)
     except Exception as e:
         logger.warning(f"Could not upload to cloud storage directly, saving locally: {e}")
 
@@ -275,6 +288,7 @@ async def upload_book(
         original_filename=filename,
         file_path=str(save_path),
         storage_path=storage_path,
+        source_type=source_type,
         checksum=checksum,
         subject_id=subject.id if subject else None,
         subject_name=subject_name or "इतिहास",

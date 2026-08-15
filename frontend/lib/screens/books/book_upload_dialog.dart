@@ -20,11 +20,11 @@ class _BookUploadDialogState extends State<BookUploadDialog> {
   bool _isUploading = false;
   String? _error;
 
-  Future<void> _pickFile() async {
+  Future<void> _pickFile({String? preferredExtension}) async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf'],
+        allowedExtensions: preferredExtension != null ? [preferredExtension] : ['pdf', 'txt'],
         withData: kIsWeb,
       );
 
@@ -32,7 +32,11 @@ class _BookUploadDialogState extends State<BookUploadDialog> {
         setState(() {
           _selectedFile = result.files.first;
           if (_titleController.text.isEmpty) {
-            _titleController.text = _selectedFile!.name.replaceAll('.pdf', '');
+            _titleController.text = _selectedFile!.name
+                .replaceAll('.pdf', '')
+                .replaceAll('.PDF', '')
+                .replaceAll('.txt', '')
+                .replaceAll('.TXT', '');
           }
           _error = null;
         });
@@ -46,7 +50,7 @@ class _BookUploadDialogState extends State<BookUploadDialog> {
 
   Future<void> _submitUpload() async {
     if (_selectedFile == null) {
-      setState(() => _error = 'कृपया PDF फाईल निवडा.');
+      setState(() => _error = 'कृपया PDF किंवा TXT फाईल निवडा.');
       return;
     }
 
@@ -69,7 +73,7 @@ class _BookUploadDialogState extends State<BookUploadDialog> {
       if (success) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('पुस्तक अपलोड झाले! इंडेक्सिंग सुरू आहे...')),
+          const SnackBar(content: Text('पुस्तक/दस्तऐवज अपलोड झाले! इंडेक्सिंग सुरू आहे...')),
         );
       } else {
         setState(() {
@@ -81,6 +85,8 @@ class _BookUploadDialogState extends State<BookUploadDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isTxt = _selectedFile != null && _selectedFile!.name.toLowerCase().endsWith('.txt');
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
@@ -94,8 +100,8 @@ class _BookUploadDialogState extends State<BookUploadDialog> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'नवीन पुस्तक जोडा 📚',
-                    style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
+                    'नवीन पुस्तक / नोट्स जोडा 📚',
+                    style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.bold),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close, size: 20),
@@ -103,28 +109,79 @@ class _BookUploadDialogState extends State<BookUploadDialog> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              // File Picker Button
+              const SizedBox(height: 14),
+
+              // Format Chooser Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickFile(preferredExtension: 'pdf'),
+                      icon: const Icon(Icons.picture_as_pdf, color: Colors.redAccent, size: 18),
+                      label: Text(
+                        'PDF अपलोड',
+                        style: GoogleFonts.notoSansDevanagari(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        side: BorderSide(
+                          color: (_selectedFile != null && !isTxt) ? Colors.redAccent : Colors.white24,
+                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickFile(preferredExtension: 'txt'),
+                      icon: const Icon(Icons.description, color: Color(0xFF00E5FF), size: 18),
+                      label: Text(
+                        'TXT अपलोड',
+                        style: GoogleFonts.notoSansDevanagari(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        side: BorderSide(
+                          color: isTxt ? const Color(0xFF00E5FF) : Colors.white24,
+                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // Selected File Preview Card
               InkWell(
-                onTap: _pickFile,
+                onTap: () => _pickFile(),
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    border: Border.all(color: Colors.white24, style: BorderStyle.solid),
+                    border: Border.all(
+                      color: _selectedFile != null
+                          ? (isTxt ? const Color(0xFF00E5FF).withOpacity(0.5) : Colors.redAccent.withOpacity(0.5))
+                          : Colors.white24,
+                    ),
                     borderRadius: BorderRadius.circular(12),
                     color: Colors.white.withOpacity(0.04),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.picture_as_pdf, color: Colors.redAccent, size: 32),
+                      Icon(
+                        isTxt ? Icons.description : Icons.picture_as_pdf,
+                        color: isTxt ? const Color(0xFF00E5FF) : Colors.redAccent,
+                        size: 32,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _selectedFile != null ? _selectedFile!.name : 'PDF फाईल निवडा',
+                              _selectedFile != null ? _selectedFile!.name : 'PDF किंवा TXT फाईल निवडा',
                               style: GoogleFonts.poppins(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w500,
@@ -134,8 +191,8 @@ class _BookUploadDialogState extends State<BookUploadDialog> {
                             ),
                             Text(
                               _selectedFile != null
-                                  ? '${(_selectedFile!.size / 1024 / 1024).toStringAsFixed(2)} MB'
-                                  : 'फक्त .pdf फाईल्स अनुमत',
+                                  ? '${(_selectedFile!.size / 1024 / 1024).toStringAsFixed(2)} MB (${isTxt ? "TXT" : "PDF"})'
+                                  : 'समर्थित: .pdf आणि .txt फाईल्स',
                               style: GoogleFonts.notoSansDevanagari(fontSize: 11, color: Colors.white54),
                             ),
                           ],
@@ -146,18 +203,20 @@ class _BookUploadDialogState extends State<BookUploadDialog> {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
+
               // Title textfield
               TextField(
                 controller: _titleController,
                 decoration: InputDecoration(
-                  labelText: 'पुस्तकाचे नाव (Title)',
+                  labelText: 'पुस्तकाचे / नोट्सचे नाव (Title)',
                   labelStyle: GoogleFonts.notoSansDevanagari(fontSize: 13),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 style: GoogleFonts.notoSansDevanagari(fontSize: 14),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
+
               // Subject Dropdown
               DropdownButtonFormField<String>(
                 value: _selectedSubject,
@@ -183,7 +242,8 @@ class _BookUploadDialogState extends State<BookUploadDialog> {
                   style: const TextStyle(color: Colors.redAccent, fontSize: 12),
                 ),
               ],
-              const SizedBox(height: 20),
+              const SizedBox(height: 18),
+
               // Submit button
               SizedBox(
                 width: double.infinity,
