@@ -185,9 +185,15 @@ async def init_db():
     try:
         # Import schema models to register with Base.metadata before create_all
         import app.models.schema
+        from app.migrations import run_schema_migrations
+        
         async with async_engine.begin() as conn:
+            # 1. Create any missing tables
             await conn.run_sync(Base.metadata.create_all)
-        logger.info("Database connection established and all schemas (including document_chunks) initialized successfully.")
+            # 2. Run idempotent column migrations for existing tables
+            await run_schema_migrations(conn)
+            
+        logger.info("Database connection established, migrations applied, and all schemas initialized successfully.")
     except Exception as e:
         logger.error(f"CRITICAL: Database initialization failed: {e}")
         if settings.ENVIRONMENT.lower() == "production":

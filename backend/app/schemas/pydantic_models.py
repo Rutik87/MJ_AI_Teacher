@@ -37,6 +37,8 @@ class BookResponse(BookBase):
     progress_percent: float = 0.0
     current_page_processing: int = 0
     total_chunks: int = 0
+    checksum: Optional[str] = None
+    storage_path: Optional[str] = None
     is_indexed: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
