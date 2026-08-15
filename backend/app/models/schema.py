@@ -42,6 +42,7 @@ class User(Base):
     progress_records = relationship("Progress", back_populates="user", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
     voice_settings = relationship("VoiceSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    books = relationship("Book", back_populates="user", cascade="all, delete-orphan")
 
 class Subject(Base):
     __tablename__ = "subjects"
@@ -61,6 +62,7 @@ class Subject(Base):
 class Book(Base):
     __tablename__ = "books"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, default=1, index=True)
     title = Column(String(255), nullable=False, index=True)
     original_filename = Column(String(255), nullable=False)
     file_path = Column(String(500), nullable=False)
@@ -84,6 +86,7 @@ class Book(Base):
         return self.status == ProcessingStatus.COMPLETED
 
     # Relationships
+    user = relationship("User", back_populates="books")
     subject_rel = relationship("Subject", back_populates="books")
     chapters = relationship("Chapter", back_populates="book", cascade="all, delete-orphan")
     pages = relationship("Page", back_populates="book", cascade="all, delete-orphan")

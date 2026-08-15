@@ -6,6 +6,7 @@ import 'package:frontend/core/services/sync_service.dart';
 import 'package:frontend/core/services/offline_book_service.dart';
 import 'package:frontend/models/book.dart';
 import 'package:frontend/providers/books_provider.dart';
+import 'package:frontend/providers/progress_provider.dart';
 import 'package:frontend/widgets/bouncing_wrapper.dart';
 import 'package:frontend/screens/books/book_upload_dialog.dart';
 import 'package:frontend/screens/books/pdf_reader_screen.dart';
@@ -28,11 +29,149 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
     super.dispose();
   }
 
+  void _confirmAndDeleteBook(
+    BuildContext context,
+    BookModel book,
+    BooksProvider booksProv,
+    SyncService syncService,
+    OfflineBookService offlineService,
+    ProgressProvider progressProv,
+  ) {
+    soundService.playBubble();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0A0E17),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: Colors.redAccent.withOpacity(0.4)),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 24),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'पुस्तक हटवायचे आहे का?',
+                style: GoogleFonts.notoSansDevanagari(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '\"${book.title}\" हे पुस्तक कायमचे हटवायचे आहे का?',
+              style: GoogleFonts.notoSansDevanagari(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.redAccent.withOpacity(0.25)),
+              ),
+              child: Text(
+                '⚠️ PDF, RAG data, progress, bookmarks आणि संबंधित study data कायमचे हटवले जातील.',
+                style: GoogleFonts.notoSansDevanagari(
+                  fontSize: 11.5,
+                  color: Colors.white70,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              soundService.playClick();
+              Navigator.of(ctx).pop();
+            },
+            child: Text(
+              'रद्द करा (Cancel)',
+              style: GoogleFonts.notoSansDevanagari(color: Colors.white60, fontSize: 12),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD50000),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () async {
+              soundService.playClick();
+              Navigator.of(ctx).pop();
+
+              if (!syncService.isOnline) {
+                await syncService.queueAction(
+                  actionType: 'delete_book',
+                  payload: {'book_id': book.id},
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('इंटरनेट कनेक्शन उपलब्ध नाही. Delete request queue केली आहे.'),
+                      backgroundColor: Color(0xFF37474F),
+                    ),
+                  );
+                }
+                return;
+              }
+
+              final success = await booksProv.deleteBook(book.id);
+              if (success) {
+                // Clear offline cached file
+                await offlineService.removeOfflineBook(book.id);
+                // Refresh progress & analytics
+                progressProv.fetchProgress();
+
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('पुस्तक यशस्वीरित्या हटवले.'),
+                      backgroundColor: Color(0xFF2E7D32),
+                    ),
+                  );
+                }
+              } else {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('पुस्तक हटवता आले नाही. कृपया पुन्हा प्रयत्न करा.'),
+                      backgroundColor: Color(0xFFC62828),
+                    ),
+                  );
+                }
+              }
+            },
+            child: Text(
+              'हटवा (Delete)',
+              style: GoogleFonts.notoSansDevanagari(fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final booksProv = context.watch<BooksProvider>();
     final syncService = context.watch<SyncService>();
     final offlineService = context.watch<OfflineBookService>();
+    final progressProv = context.watch<ProgressProvider>();
     final books = booksProv.books;
 
     return Scaffold(
@@ -102,35 +241,36 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
             ),
           ),
 
-          // 1. Search Bar
+          // 1. Live Search Bar
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              height: 44,
               decoration: BoxDecoration(
                 color: const Color(0xFF0A0E17),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: Colors.white12),
               ),
-              child: Row(
-                children: [
-                  const Icon(Icons.search, color: Colors.white38, size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: _searchCtrl,
-                      onChanged: (val) => booksProv.setSearchQuery(val),
-                      style: GoogleFonts.notoSansDevanagari(color: Colors.white, fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText: 'पुस्तके किंवा धडा शोधा...',
-                        hintStyle: GoogleFonts.notoSansDevanagari(color: Colors.white38, fontSize: 13),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-                ],
+              child: TextField(
+                controller: _searchCtrl,
+                style: GoogleFonts.notoSansDevanagari(fontSize: 13, color: Colors.white),
+                onChanged: (val) => booksProv.setSearchQuery(val),
+                decoration: InputDecoration(
+                  hintText: 'पुस्तके किंवा विषय शोधा...',
+                  hintStyle: GoogleFonts.notoSansDevanagari(fontSize: 12, color: Colors.white38),
+                  prefixIcon: const Icon(Icons.search, color: Color(0xFF00E5FF), size: 20),
+                  suffixIcon: _searchCtrl.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, color: Colors.white54, size: 18),
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            booksProv.setSearchQuery('');
+                          },
+                        )
+                      : null,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                ),
               ),
             ),
           ),
@@ -195,7 +335,15 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
                           itemCount: books.length,
                           itemBuilder: (context, index) {
                             final book = books[index];
-                            return _buildBookItemCard(context, book, index, offlineService);
+                            return _buildBookItemCard(
+                              context,
+                              book,
+                              index,
+                              offlineService,
+                              booksProv,
+                              syncService,
+                              progressProv,
+                            );
                           },
                         ),
                       ),
@@ -272,6 +420,9 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
     BookModel book,
     int index,
     OfflineBookService offlineService,
+    BooksProvider booksProv,
+    SyncService syncService,
+    ProgressProvider progressProv,
   ) {
     final colors = [
       const Color(0xFF2979FF),
@@ -363,19 +514,39 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
                         '${book.totalPages} पाने • ${(book.fileSizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB',
                         style: GoogleFonts.poppins(fontSize: 10, color: Colors.white54),
                       ),
-                      BouncingWrapper(
-                        onTap: () {
-                          if (isDownloaded) {
-                            offlineService.removeOfflineBook(book.id);
-                          } else {
-                            offlineService.downloadBookForOffline(book);
-                          }
-                        },
-                        child: Icon(
-                          isDownloaded ? Icons.download_done : Icons.download_for_offline_outlined,
-                          color: isDownloaded ? const Color(0xFF00E676) : Colors.white38,
-                          size: 18,
-                        ),
+                      Row(
+                        children: [
+                          BouncingWrapper(
+                            onTap: () {
+                              if (isDownloaded) {
+                                offlineService.removeOfflineBook(book.id);
+                              } else {
+                                offlineService.downloadBookForOffline(book);
+                              }
+                            },
+                            child: Icon(
+                              isDownloaded ? Icons.download_done : Icons.download_for_offline_outlined,
+                              color: isDownloaded ? const Color(0xFF00E676) : Colors.white38,
+                              size: 18,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          BouncingWrapper(
+                            onTap: () => _confirmAndDeleteBook(
+                              context,
+                              book,
+                              booksProv,
+                              syncService,
+                              offlineService,
+                              progressProv,
+                            ),
+                            child: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.white38,
+                              size: 18,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

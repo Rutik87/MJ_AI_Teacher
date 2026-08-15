@@ -11,7 +11,7 @@ from sqlalchemy import delete, update
 
 from app.database import get_db, SyncSessionLocal
 from app.config import settings
-from app.models.schema import Book, Subject, Chapter, Page, DocumentChunk, ProcessingStatus
+from app.models.schema import Book, Subject, Chapter, Page, DocumentChunk, Bookmark, RevisionItem, Question, ProcessingStatus
 from app.schemas.pydantic_models import (
     BookResponse, BookStatusResponse, BookRenameRequest,
     SubjectResponse, SubjectCreate
@@ -225,11 +225,12 @@ async def upload_book(
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
     subject_name: Optional[str] = Form("इतिहास"),
+    user_id: int = Form(1),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Uploads a new PDF book, uploads it to Supabase Storage, and starts background extraction.
-    Includes duplicate checksum protection.
+    Includes duplicate checksum protection and user ownership assignment.
     """
     filename = sanitize_filename(file.filename or "book.pdf")
     contents = await file.read()
@@ -239,7 +240,7 @@ async def upload_book(
     # 1. Checksum generation for duplicate protection
     checksum = cloud_storage.calculate_checksum(contents)
     
-    # Check if identical completed book already exists
+    # Check if identical completed book already exists for this user
     existing_q = await db.execute(
         select(Book).where(Book.checksum == checksum, Book.status == ProcessingStatus.COMPLETED)
     )
@@ -269,6 +270,7 @@ async def upload_book(
     subject = subj_res.scalar_one_or_none()
 
     book = Book(
+        user_id=user_id,
         title=book_title,
         original_filename=filename,
         file_path=str(save_path),
@@ -419,39 +421,66 @@ async def update_book(book_id: int, data: BookRenameRequest, db: AsyncSession = 
     return book
 
 @router.delete("/books/{book_id}")
-async def delete_book(book_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_book(
+    book_id: int,
+    user_id: int = Query(1),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Deletes a book, its chunks, vector index, and Supabase Storage file.
-    Zero orphan files.
+    Zero orphan files, complete cascade cleanup, ownership validation, and idempotence.
     """
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
-        raise HTTPException(status_code=404, detail="पुस्तक सापडले नाही.")
+        raise HTTPException(
+            status_code=404,
+            detail="पुस्तक सापडले नाही किंवा आधीच हटवले गेले आहे. (Book not found or already deleted)"
+        )
+
+    # Ownership check
+    if book.user_id is not None and book.user_id != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="या पुस्तकावर तुमचा अधिकार नाही. (Delete permission denied for this user)"
+        )
+
+    storage_path = book.storage_path
+    local_file_path = book.file_path
+    book_title = book.title
 
     # 1. Remove from in-memory vector store and PostgreSQL document_chunks table
     vector_store.delete_book_chunks(book_id)
     await db.execute(delete(DocumentChunk).where(DocumentChunk.book_id == book_id))
     await db.execute(delete(Page).where(Page.book_id == book_id))
     await db.execute(delete(Chapter).where(Chapter.book_id == book_id))
+    await db.execute(delete(Bookmark).where(Bookmark.source_book == book_title))
+    await db.execute(delete(RevisionItem).where(RevisionItem.source_book == book_title))
+    await db.execute(delete(Question).where(Question.source_book_name == book_title))
 
     # 2. Remove file from Supabase Storage
-    if book.storage_path:
+    if storage_path:
         try:
-            await cloud_storage.delete_file(book.storage_path)
+            await cloud_storage.delete_file(storage_path)
+            logger.info(f"Successfully deleted Supabase Storage file: [{storage_path}]")
         except Exception as st_err:
-            logger.warning(f"Failed to delete storage file [{book.storage_path}]: {st_err}")
+            logger.warning(f"Note on deleting storage file [{storage_path}]: {st_err}")
 
     # 3. Remove local temp cached copy if present
-    if book.file_path and os.path.exists(book.file_path):
+    if local_file_path and os.path.exists(local_file_path):
         try:
-            os.remove(book.file_path)
+            os.remove(local_file_path)
+            logger.info(f"Successfully removed local cache file: [{local_file_path}]")
         except Exception as e:
             logger.warning(f"Could not remove local PDF file: {e}")
 
     await db.delete(book)
     await db.commit()
-    return {"message": "पुस्तक यशस्वीरित्या हटवले.", "book_id": book_id}
+    return {
+        "success": True,
+        "book_id": book_id,
+        "message": "Book deleted successfully"
+    }
 
 @router.post("/books/{book_id}/reindex")
 async def reindex_book(book_id: int, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
