@@ -1,52 +1,60 @@
-import hashlib
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple, Dict, Any
 from app.config import settings
-from app.services.tts.voice_provider import StandardMarathiVoiceProvider, FutureVoiceProvider
+from app.services.tts.voice_engine import mj_voice_engine
 from app.utils.logger import logger
 
 class TTSService:
     """
-    Manages TTS generation, caching, and audio file serving.
+    Unified TTS and Voice Management Service.
+    Wraps mj_voice_engine for consistent single-voice synthesis across the entire app.
     """
 
     def __init__(self):
-        self.provider = StandardMarathiVoiceProvider()
+        self.engine = mj_voice_engine
         self.cache_dir = Path(settings.AUDIO_CACHE_PATH)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def set_provider(self, provider_name: str):
-        if provider_name == "future_voice":
-            self.provider = FutureVoiceProvider()
-        else:
-            self.provider = StandardMarathiVoiceProvider()
+    def get_voice_profile(self) -> Dict[str, Any]:
+        return self.engine.get_voice_profile()
 
-    async def generate_speech_file(self, text: str, lang: str = "mr", speed: float = 1.0) -> Optional[str]:
+    async def generate_speech_file(
+        self,
+        text: str,
+        lang: str = "mr",
+        speed: float = 1.0,
+        emotion: str = "neutral"
+    ) -> Optional[str]:
         """
-        Synthesizes Marathi text to an MP3 file and returns relative API URL path.
+        Synthesizes text into speech using the single authorized MJ voice.
+        Returns relative URL path to the generated MP3 audio file.
         """
-        if not text.strip():
-            return None
-
-        # Create unique hash for text + speed + lang
-        content_hash = hashlib.md5(f"{text[:500]}_{speed}_{lang}".encode("utf-8")).hexdigest()
-        filename = f"audio_{content_hash}.mp3"
-        file_path = self.cache_dir / filename
-
-        # Return cached audio if already generated
-        if file_path.exists() and file_path.stat().st_size > 500:
-            return f"/api/voice/audio/{filename}"
-
-        success = await self.provider.synthesize(
+        audio_url, _ = await self.engine.synthesize_speech(
             text=text,
-            output_path=file_path,
-            lang=lang,
-            speed=speed
+            emotion=emotion,
+            speed=speed,
+            lang=lang
         )
+        return audio_url
 
-        if success and file_path.exists():
-            return f"/api/voice/audio/{filename}"
+    async def synthesize_with_metadata(
+        self,
+        text: str,
+        lang: str = "mr",
+        speed: float = 1.0,
+        emotion: str = "neutral"
+    ) -> Tuple[Optional[str], float, str]:
+        """
+        Returns (audio_url, duration_seconds, normalized_speech_text).
+        """
+        normalized = self.engine.normalize_speech_text(text)
+        audio_url, duration = await self.engine.synthesize_speech(
+            text=text,
+            emotion=emotion,
+            speed=speed,
+            lang=lang
+        )
+        return audio_url, duration, normalized
 
-        return None
 
 tts_service = TTSService()

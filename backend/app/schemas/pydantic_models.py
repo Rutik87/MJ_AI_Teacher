@@ -257,15 +257,28 @@ class TTSRequest(BaseModel):
     text: str
     speed: float = 1.0  # 0.75, 1.0, 1.25, 1.5
     lang: str = "mr"
+    emotion: Optional[str] = "neutral"
+    voice_profile_id: Optional[str] = "mj_primary"
 
 class TTSResponse(BaseModel):
     audio_url: str
     duration_seconds: Optional[float] = 0.0
+    emotion: Optional[str] = "neutral"
+    voice_profile_id: Optional[str] = "mj_primary"
+    speech_text: Optional[str] = None
 
 class STTResponse(BaseModel):
     text: str
     confidence: float
     language: str
+
+class MJVoiceProfileResponse(BaseModel):
+    voice_profile_id: str
+    name: str
+    language: str
+    gender: str
+    is_authorized: bool
+    emotions_supported: List[str]
 
 # --- Settings Schemas ---
 class SettingsDTO(BaseModel):
