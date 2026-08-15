@@ -23,6 +23,41 @@ llm_provider = LLMProvider()
 
 router = APIRouter(prefix="/mj", tags=["Gemini Live WebSocket"])
 
+async def _handle_fallback_query(websocket: WebSocket, query: str):
+    """Processes conversational turns via unified AI and generates audio stream."""
+    try:
+        ai_reply, _ = await llm_provider.generate_completion(
+            prompt=query,
+            system_prompt=MARATHI_BEST_FRIEND_PROMPT
+        )
+        if not ai_reply:
+            ai_reply = "मी ऐकतेय! काय म्हणतोस?"
+
+        await websocket.send_json({
+            "type": "transcript",
+            "role": "assistant",
+            "text": ai_reply
+        })
+
+        audio_res = await voice_service.generate_voice(
+            text=ai_reply,
+            language="mr",
+            voice_profile="mj_primary"
+        )
+        if audio_res and audio_res.get("file_path") and os.path.exists(audio_res["file_path"]):
+            with open(audio_res["file_path"], "rb") as af:
+                raw_audio = af.read()
+            b64 = base64.b64encode(raw_audio).decode("utf-8")
+            await websocket.send_json({
+                "type": "audio",
+                "data": b64,
+                "mime_type": "audio/wav"
+            })
+
+        await websocket.send_json({"type": "turn_complete"})
+    except Exception as e:
+        logger.error(f"[LIVE-WS] Fallback execution error: {e}")
+
 @router.websocket("/live-ws")
 async def gemini_live_websocket(websocket: WebSocket):
     """
@@ -85,36 +120,43 @@ async def gemini_live_websocket(websocket: WebSocket):
                                 query = data.get("text", "")
                                 if query.strip():
                                     logger.info(f"[LIVE-WS] audio received text query length={len(query)}")
-                                    await session.send_client_content(
-                                        turns=types.Content(
-                                            role="user",
-                                            parts=[types.Part.from_text(text=query)]
-                                        ),
-                                        end_of_turn=True
-                                    )
-                                    logger.info("[LIVE-WS] audio sent to Gemini")
+                                    try:
+                                        await session.send_client_content(
+                                            turns=types.Content(
+                                                role="user",
+                                                parts=[types.Part.from_text(text=query)]
+                                            ),
+                                            end_of_turn=True
+                                        )
+                                        logger.info("[LIVE-WS] audio sent to Gemini")
+                                    except Exception as send_err:
+                                        logger.warning(f"[LIVE-WS] Live session send failed: {send_err}. Falling back to AI engine.")
+                                        await _handle_fallback_query(websocket, query)
+
                             elif msg_type == "audio_chunk":
                                 raw_b64 = data.get("data", "")
                                 if raw_b64:
                                     pcm_bytes = base64.b64decode(raw_b64)
-                                    logger.debug(f"[LIVE-WS] audio received PCM bytes={len(pcm_bytes)}")
-                                    await session.send_realtime_input(
-                                        audio=types.Blob(
-                                            mime_type="audio/pcm;rate=16000",
-                                            data=pcm_bytes
+                                    try:
+                                        await session.send_realtime_input(
+                                            audio=types.Blob(
+                                                mime_type="audio/pcm;rate=16000",
+                                                data=pcm_bytes
+                                            )
                                         )
-                                    )
-                                    logger.debug("[LIVE-WS] audio sent to Gemini")
+                                    except Exception:
+                                        pass
 
                         elif "bytes" in msg and msg["bytes"]:
-                            logger.debug(f"[LIVE-WS] audio received binary PCM bytes={len(msg['bytes'])}")
-                            await session.send_realtime_input(
-                                audio=types.Blob(
-                                    mime_type="audio/pcm;rate=16000",
-                                    data=msg["bytes"]
+                            try:
+                                await session.send_realtime_input(
+                                    audio=types.Blob(
+                                        mime_type="audio/pcm;rate=16000",
+                                        data=msg["bytes"]
+                                    )
                                 )
-                            )
-                            logger.debug("[LIVE-WS] audio sent to Gemini")
+                            except Exception:
+                                pass
                 except WebSocketDisconnect:
                     logger.info("[LIVE-WS] client disconnected")
                 except Exception as e:

@@ -14,6 +14,12 @@ import ssl
 import urllib.request
 import urllib.parse
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 PROD_URL = "https://mj-ai-teacher.onrender.com"
 WS_PROD_URL = "wss://mj-ai-teacher.onrender.com/api/mj/live-ws"
 
