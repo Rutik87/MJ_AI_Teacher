@@ -125,7 +125,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                         subtitle: Text(
-                          '${b.subject} • ${b.totalPages} पाने',
+                          '${b.subjectName} • ${b.totalPages} पाने',
                           style: GoogleFonts.poppins(fontSize: 11, color: Colors.white54),
                         ),
                         trailing: isSelected

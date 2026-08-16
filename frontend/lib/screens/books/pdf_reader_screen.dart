@@ -108,7 +108,7 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'विषय: ${widget.book.subject} • ${widget.book.totalPages} पाने',
+                        'विषय: ${widget.book.subjectName} • ${widget.book.totalPages} पाने',
                         style: GoogleFonts.notoSansDevanagari(
                           fontSize: 12,
                           color: Colors.white70,
