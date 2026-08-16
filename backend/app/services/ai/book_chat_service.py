@@ -165,12 +165,18 @@ class BookChatService:
 """
 
         # 5. Generate Answer via direct ChatGPT
-        ai_reply, prov_name = await llm_provider.generate_chat_response(
-            messages=[{"role": "user", "content": prompt}],
+        ai_reply_tuple = await llm_provider.generate_completion(
+            prompt=prompt,
             system_prompt=MPSC_TEACHER_SYSTEM_PROMPT
         )
+        ai_reply = ai_reply_tuple[0] if isinstance(ai_reply_tuple, tuple) else ai_reply_tuple
         if not ai_reply:
-            ai_reply = "या संदर्भावरून उत्तर तयार करताना त्रुटी आली. कृपया पुन्हा प्रयत्न करा."
+            ai_reply = llm_provider._generate_heuristic_response(
+                user_message=message,
+                context_str=context_text,
+                citations=citations,
+                mode="general_chat"
+            )
 
         # Format citations
         formatted_citations = [
