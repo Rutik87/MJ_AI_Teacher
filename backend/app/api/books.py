@@ -11,7 +11,10 @@ from sqlalchemy import delete, update
 
 from app.database import get_db, SyncSessionLocal
 from app.config import settings
-from app.models.schema import Book, Subject, Chapter, Page, DocumentChunk, Bookmark, RevisionItem, Question, ProcessingStatus
+from app.models.schema import (
+    Book, Subject, Chapter, Page, DocumentChunk, Bookmark,
+    RevisionItem, Question, ProcessingStatus, BookChatMessage, HandwrittenNote
+)
 from app.schemas.pydantic_models import (
     BookResponse, BookStatusResponse, BookRenameRequest,
     SubjectResponse, SubjectCreate
@@ -464,6 +467,8 @@ async def delete_book(
 
     # 1. Remove from in-memory vector store and PostgreSQL document_chunks table
     vector_store.delete_book_chunks(book_id)
+    await db.execute(delete(HandwrittenNote).where(HandwrittenNote.book_id == book_id))
+    await db.execute(delete(BookChatMessage).where(BookChatMessage.book_id == book_id))
     await db.execute(delete(DocumentChunk).where(DocumentChunk.book_id == book_id))
     await db.execute(delete(Page).where(Page.book_id == book_id))
     await db.execute(delete(Chapter).where(Chapter.book_id == book_id))

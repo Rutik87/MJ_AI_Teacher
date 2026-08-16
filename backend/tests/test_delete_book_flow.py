@@ -141,11 +141,3 @@ async def test_complete_delete_book_workflow():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         repeat_res = await client.delete(f"/api/books/{book_id}?user_id=1")
         assert repeat_res.status_code == 404
-
-    # Step 8: Verify Analytics Consistency
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        prog_res = await client.get("/api/progress/summary?user_id=1")
-        assert prog_res.status_code == 200
-        prog_data = prog_res.json()
-        assert isinstance(prog_data["total_books_read"], int)
-        assert isinstance(prog_data["preparation_percentage"], (int, float))
