@@ -26,8 +26,30 @@ async def _handle_assistant_turn(websocket: WebSocket, query: str):
     """Processes conversational turns via unified AI and generates audio stream."""
     try:
         logger.info(f"[LIVE-WS] audio sent to Gemini: {query}")
+        
+        # Detect tool execution (RAG / Current Affairs)
+        q_lower = query.lower()
+        context_extra = ""
+        
+        # 1. RAG Tool Trigger
+        if any(w in q_lower for w in ["माझ्या पुस्तकात", "अपलोड केलेल्या", "notes madhe", "book madhe", "पुस्तकात काय", "धड्यात काय"]):
+            tool_res = await gemini_live_service.execute_tool_call("search_uploaded_document", {"query": query})
+            if tool_res.get("found_count", 0) > 0:
+                context_extra = f"\n\n[अपलोड केलेल्या पुस्तकातील संदर्भ]:\n{tool_res.get('context', '')}"
+            else:
+                context_extra = "\n\n[सूचना]: या प्रश्नाचे पुरेसे उत्तर वापरकर्त्याच्या अपलोड केलेल्या स्रोतात सापडले नाही."
+        
+        # 2. Current Affairs Tool Trigger
+        elif any(w in q_lower for w in ["चालू घडामोडी", "current affairs", "आजच्या बातम्या", "आज काय घडले", "ताजी बातमी"]):
+            tool_res = await gemini_live_service.execute_tool_call("get_today_current_affairs", {"topic_query": query})
+            if tool_res.get("articles"):
+                ca_summary = "\n".join([f"- {a['title_mr']}: {a['summary_mr']}" for a in tool_res["articles"][:3]])
+                context_extra = f"\n\n[आजच्या ताज्या चालू घडामोडी]:\n{ca_summary}"
+
+        prompt_with_context = f"{query}{context_extra}" if context_extra else query
+
         ai_reply, _ = await llm_provider.generate_completion(
-            prompt=query,
+            prompt=prompt_with_context,
             system_prompt=MARATHI_BEST_FRIEND_PROMPT
         )
         if not ai_reply:
