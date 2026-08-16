@@ -542,9 +542,9 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => PdfReaderScreen(
+                        builder: (_) => PDFReaderScreen(
                           book: book,
-                          initialPage: isOffline ? offlineService.getLastReadPage(book.id) : 1,
+                          initialPage: 1,
                         ),
                       ),
                     );

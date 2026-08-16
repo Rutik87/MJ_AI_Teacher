@@ -74,6 +74,33 @@ class ApiClient {
     }
   }
 
+  static Future<ApiResponse<dynamic>> put(String url, {Map<String, dynamic>? body}) async {
+    try {
+      final response = await _client.put(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: body != null ? jsonEncode(body) : null,
+      ).timeout(const Duration(seconds: 20));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        return ApiResponse(isSuccess: true, data: decoded, statusCode: response.statusCode);
+      } else {
+        return ApiResponse(
+          isSuccess: false,
+          errorMessage: _extractError(response),
+          statusCode: response.statusCode,
+        );
+      }
+    } catch (e) {
+      return ApiResponse(
+        isSuccess: false,
+        errorMessage: 'अपडेट करण्यात त्रुटी: $e',
+        statusCode: 500,
+      );
+    }
+  }
+
   static Future<ApiResponse<dynamic>> patch(String url, {Map<String, dynamic>? body}) async {
     try {
       final response = await _client.patch(
