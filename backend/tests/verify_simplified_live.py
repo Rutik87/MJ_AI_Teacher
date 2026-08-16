@@ -10,7 +10,7 @@ SAMPLE_TXT_CONTENT = """प्रकरण १: महाराष्ट्र�
 async def main():
     async with httpx.AsyncClient(timeout=120.0) as client:
         print("=" * 65)
-        print("MPSC AI SIMPLIFIED ARCHITECTURE — LIVE PRODUCTION AUDIT")
+        print("MPSC AI v1.0 (FILES + CHATGPT + SCHEDULE) — LIVE AUDIT")
         print("=" * 65)
 
         base_url = "https://mj-ai-teacher.onrender.com"
@@ -72,7 +72,7 @@ async def main():
         r_hist = await client.get(f"{base_url}/api/books/{book_id}/chat/history?user_id=1")
         print(f"[TEST 8] Book Chat History: {r_hist.status_code} (Messages: {len(r_hist.json())})")
         assert r_hist.status_code == 200
-        assert len(r_hist.json()) >= 4  # 2 user msgs + 2 ai answers
+        assert len(r_hist.json()) >= 4
 
         # 9. General Chat Message Endpoint
         r_gen_chat = await client.post(f"{base_url}/api/chat/message", json={
@@ -83,12 +83,45 @@ async def main():
         print(f"         Message: {r_gen_chat.json().get('message', '')[:100]}...")
         assert r_gen_chat.status_code == 200
 
-        # 10. Delete File
+        # 10. Study Schedule Get & Save
+        sched_payload = {
+            "user_id": 1,
+            "target_exam": "MPSC राज्यसेवा पूर्व परीक्षा 2026",
+            "daily_study_hours": 7.0,
+            "primary_subjects": ["इतिहास", "राज्यशास्त्र", "भूगोल", "अर्थशास्त्र"],
+            "slots": [
+                {"time_slot": "07:00 AM - 09:30 AM", "subject": "राज्यशास्त्र", "topic": "घटनेची ठळक वैशिष्ट्ये", "activity": "सखोल वाचन"},
+                {"time_slot": "10:30 AM - 01:00 PM", "subject": "इतिहास", "topic": "महाराष्ट्रातील समाजसुधारक", "activity": "नोट्स व रिव्हिजन"}
+            ]
+        }
+        r_sched_save = await client.post(f"{base_url}/api/schedule", json=sched_payload)
+        print(f"[TEST 10] Save Schedule: {r_sched_save.status_code} -> {r_sched_save.json().get('message')}")
+        assert r_sched_save.status_code == 200
+
+        r_sched_get = await client.get(f"{base_url}/api/schedule?user_id=1")
+        print(f"[TEST 11] Get Schedule: {r_sched_get.status_code} (Slots: {len(r_sched_get.json().get('slots', []))})")
+        assert r_sched_get.status_code == 200
+
+        # 12. ChatGPT Schedule Analyzer
+        analyze_payload = {
+            "user_id": 1,
+            "target_exam": "MPSC राज्यसेवा पूर्व परीक्षा 2026",
+            "daily_study_hours": 7.0,
+            "exam_date": "2026-11-15",
+            "weak_subjects": ["अर्थशास्त्र", "सामान्य विज्ञान"],
+            "current_schedule": "दररोज ७ तास अभ्यास"
+        }
+        r_sched_ana = await client.post(f"{base_url}/api/schedule/analyze", json=analyze_payload)
+        print(f"[TEST 12] ChatGPT Schedule Analysis: {r_sched_ana.status_code}")
+        print(f"          Analysis Preview: {r_sched_ana.json().get('analysis_markdown', '')[:120]}...")
+        assert r_sched_ana.status_code == 200
+
+        # 13. Delete File Cascade
         r_del = await client.delete(f"{base_url}/api/books/{book_id}")
-        print(f"[TEST 10] Delete Book: {r_del.status_code}")
+        print(f"[TEST 13] Delete Book Cascade: {r_del.status_code}")
         assert r_del.status_code == 200
 
-        print("\nALL PRODUCTION ACCEPTANCE CHECKS PASSED SUCCESSFULLY!")
+        print("\nALL 13 PRODUCTION ACCEPTANCE CHECKS PASSED SUCCESSFULLY!")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -41,7 +41,7 @@ class CyberDrawer extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'MPSC AI',
+                          'MPSC AI v1.0',
                           style: GoogleFonts.poppins(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
@@ -50,7 +50,7 @@ class CyberDrawer extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          'Files & ChatGPT Workspace',
+                          'Files • ChatGPT • Schedule',
                           style: GoogleFonts.poppins(
                             fontSize: 11,
                             color: const Color(0xFF00E5FF),
@@ -65,7 +65,7 @@ class CyberDrawer extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // 2. Navigation Items (Files, Chat, Settings)
+            // 2. Navigation Items (Files, ChatGPT, Schedule, Settings)
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -94,6 +94,17 @@ class CyberDrawer extends StatelessWidget {
                   const SizedBox(height: 6),
                   _buildDrawerItem(
                     context,
+                    icon: Icons.calendar_month_outlined,
+                    title: '🗓️ Schedule (अभ्यास नियोजन)',
+                    subtitle: 'वेळापत्रक व AI विश्लेषण',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      onSelectTab(2);
+                    },
+                  ),
+                  const SizedBox(height: 6),
+                  _buildDrawerItem(
+                    context,
                     icon: Icons.settings_outlined,
                     title: '⚙️ Settings (सेटिंग्ज)',
                     subtitle: 'सर्व्हर व भाषा पर्याय',
@@ -112,7 +123,7 @@ class CyberDrawer extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                'MPSC AI v2.0 • Clean Edition',
+                'MPSC AI v1.0 • Official Release',
                 style: GoogleFonts.poppins(
                   fontSize: 11,
                   color: Colors.white30,

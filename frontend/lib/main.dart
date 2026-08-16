@@ -7,11 +7,13 @@ import 'package:frontend/core/services/sync_service.dart';
 import 'package:frontend/core/services/offline_book_service.dart';
 import 'package:frontend/providers/books_provider.dart';
 import 'package:frontend/providers/chat_provider.dart';
+import 'package:frontend/providers/schedule_provider.dart';
 import 'package:frontend/providers/settings_provider.dart';
 
 import 'package:frontend/screens/splash/splash_screen.dart';
 import 'package:frontend/screens/books/book_library_screen.dart';
 import 'package:frontend/screens/chat/ai_chat_screen.dart';
+import 'package:frontend/screens/schedule/schedule_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +27,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => OfflineBookService()),
         ChangeNotifierProvider(create: (_) => BooksProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
+        ChangeNotifierProvider(create: (_) => ScheduleProvider()),
       ],
       child: const MPSCAssistantApp(),
     ),
@@ -81,6 +84,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
     final List<Widget> screens = const [
       BookLibraryScreen(),
       AIChatScreen(),
+      ScheduleScreen(),
     ];
 
     return Scaffold(
@@ -95,11 +99,11 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         child: SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFF0A0E17).withOpacity(0.85),
+                color: const Color(0xFF0A0E17).withOpacity(0.9),
                 borderRadius: BorderRadius.circular(28),
                 border: Border.all(
                   color: const Color(0xFF00E5FF).withOpacity(0.3),
@@ -114,10 +118,11 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                 ],
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildNavItem(0, Icons.folder_outlined, Icons.folder, 'Files (फाईल्स)'),
+                  _buildNavItem(0, Icons.folder_outlined, Icons.folder, 'Files (पुस्तके)'),
                   _buildNavItem(1, Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, 'ChatGPT (चॅट)'),
+                  _buildNavItem(2, Icons.calendar_month_outlined, Icons.calendar_month, 'Schedule (नियोजन)'),
                 ],
               ),
             ),
@@ -136,11 +141,11 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: isSelected
             ? BoxDecoration(
                 color: const Color(0xFF00E5FF).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: const Color(0xFF00E5FF).withOpacity(0.8),
                   width: 1.2,
@@ -159,13 +164,13 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
             Icon(
               isSelected ? activeIcon : inactiveIcon,
               color: isSelected ? const Color(0xFF00E5FF) : Colors.white60,
-              size: 22,
+              size: 20,
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             Text(
               label,
               style: GoogleFonts.poppins(
-                fontSize: 13,
+                fontSize: 11.5,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 color: isSelected ? const Color(0xFF00E5FF) : Colors.white60,
               ),

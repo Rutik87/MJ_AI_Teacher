@@ -10,6 +10,7 @@ from app.api import (
     books_router,
     chat_router,
     settings_router,
+    schedule_router,
     rag_router
 )
 from app.utils.logger import logger
@@ -32,7 +33,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Personal MPSC AI Workspace: File Management & ChatGPT File-Aware Chat",
+    description="MPSC AI v1.0 Workspace: Files, ChatGPT Chat & Schedule Analyzer",
     lifespan=lifespan
 )
 
@@ -47,10 +48,12 @@ app.add_middleware(
 
 # ============================================================
 # Core Routers: 1. Files & Storage (books) | 2. ChatGPT (chat)
-#               3. RAG Health (rag)        | 4. Settings (settings)
+#               3. Schedule (schedule)     | 4. Settings (settings)
+#               5. RAG Diagnostic (rag)
 # ============================================================
 app.include_router(books_router, prefix=settings.API_PREFIX)
 app.include_router(chat_router, prefix=settings.API_PREFIX)
+app.include_router(schedule_router, prefix=settings.API_PREFIX)
 app.include_router(settings_router, prefix=settings.API_PREFIX)
 app.include_router(rag_router, prefix=settings.API_PREFIX)
 
@@ -60,7 +63,7 @@ async def root():
         "app": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "status": "online",
-        "message": "नमस्कार! MPSC AI Study Assistant API कार्यरत आहे. (Files + ChatGPT Chat)"
+        "message": "नमस्कार! MPSC AI v1.0 कार्यरत आहे. (1. 📚 Files | 2. 🤖 ChatGPT | 3. 🗓️ Schedule)"
     }
 
 @app.get("/api/health")

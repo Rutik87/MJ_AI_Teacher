@@ -15,6 +15,9 @@ class ApiEndpoints {
   static String get chatMessage => '$baseUrl/chat/message';
   static String chatSessionMessages(int id) => '$baseUrl/chat/sessions/$id/messages';
 
+  static String get schedule => '$baseUrl/schedule';
+  static String get scheduleAnalyze => '$baseUrl/schedule/analyze';
+
   static String get teacherTeach => '$baseUrl/teacher/teach';
   static String get teacherExamFocus => '$baseUrl/teacher/exam-focus';
 
