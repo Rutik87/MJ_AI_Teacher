@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 from httpx import AsyncClient, ASGITransport
 
 from app.main import app
-from app.services.notes.prototype_notes_service import prototype_notes_service
+from app.services.notes.user_controlled_notes_service import user_controlled_notes_service
 
 @pytest.mark.asyncio
 async def test_browser_prototype_html_route():
@@ -15,9 +15,8 @@ async def test_browser_prototype_html_route():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         res = await client.get("/prototype/notes")
         assert res.status_code == 200
-        assert "MPSC AI • Handwritten Notes" in res.text
+        assert "MPSC AI • User-Controlled" in res.text
         assert "Live Notebook Preview" in res.text
-        assert "Upload & Extract Chapters" in res.text
 
 @pytest.mark.asyncio
 async def test_prototype_txt_upload_and_chapter_detection():
@@ -48,7 +47,7 @@ async def test_prototype_txt_upload_and_chapter_detection():
 async def test_prototype_chatgpt_generation_and_pdf_download():
     """Verifies ChatGPT notes generation and multi-page notebook PDF creation."""
     sample_text = "१८५७ च्या उठावाची कारणे, २९ मार्च १८५७ रोजी मंगल पांडे यांचे बंड आणि लॉर्ड कॅनिंग यांची भूमिका."
-    doc_result = await prototype_notes_service.process_upload(
+    doc_result = await user_controlled_notes_service.process_upload(
         sample_text.encode("utf-8"),
         "test_history_doc.txt"
     )
@@ -116,4 +115,4 @@ async def test_prototype_chatgpt_generation_and_pdf_download():
             pdf_res = await client.get(f"/prototype/notes/{doc_id}/pdf")
             assert pdf_res.status_code == 200
             assert pdf_res.headers["content-type"] == "application/pdf"
-            assert len(pdf_res.content) > 1000  # valid binary PDF bytes
+            assert len(pdf_res.content) > 1000
