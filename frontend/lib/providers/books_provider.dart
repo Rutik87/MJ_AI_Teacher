@@ -6,7 +6,7 @@ import 'package:frontend/models/book.dart';
 
 class BooksProvider extends ChangeNotifier {
   List<BookModel> _books = [];
-  String _selectedSubject = 'All';
+  String _selectedFilter = 'All'; // 'All', 'PDF', 'TXT', 'Images', 'Generated'
   String _searchQuery = '';
   bool _isLoading = false;
   String? _errorMessage;
@@ -14,7 +14,7 @@ class BooksProvider extends ChangeNotifier {
 
   List<BookModel> get books => _filteredBooks();
   List<BookModel> get allBooks => _books;
-  String get selectedSubject => _selectedSubject;
+  String get selectedFilter => _selectedFilter;
   String get searchQuery => _searchQuery;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -23,8 +23,8 @@ class BooksProvider extends ChangeNotifier {
     fetchBooks();
   }
 
-  void setSelectedSubject(String subject) {
-    _selectedSubject = subject;
+  void setFilter(String filter) {
+    _selectedFilter = filter;
     notifyListeners();
   }
 
@@ -35,11 +35,23 @@ class BooksProvider extends ChangeNotifier {
 
   List<BookModel> _filteredBooks() {
     return _books.where((b) {
-      final matchesSubject = _selectedSubject == 'All' || b.subjectName == _selectedSubject;
+      bool matchesType = true;
+      if (_selectedFilter == 'PDF') {
+        matchesType = b.sourceType.toLowerCase() == 'pdf' && !b.isGenerated;
+      } else if (_selectedFilter == 'TXT') {
+        matchesType = b.sourceType.toLowerCase() == 'txt' && !b.isGenerated;
+      } else if (_selectedFilter == 'Images') {
+        matchesType = b.sourceType.toLowerCase() == 'image';
+      } else if (_selectedFilter == 'Generated') {
+        matchesType = b.isGenerated;
+      }
+
       final matchesSearch = _searchQuery.isEmpty ||
           b.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          b.originalFilename.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           b.subjectName.toLowerCase().contains(_searchQuery.toLowerCase());
-      return matchesSubject && matchesSearch;
+
+      return matchesType && matchesSearch;
     }).toList();
   }
 
@@ -56,7 +68,7 @@ class BooksProvider extends ChangeNotifier {
             .toList();
         _checkActiveProcessing();
       } else {
-        _errorMessage = response.errorMessage ?? 'पुस्तके आणण्यात त्रुटी आली.';
+        _errorMessage = response.errorMessage ?? 'पुस्तके लोड करताना त्रुटी आली.';
       }
     } catch (e) {
       _errorMessage = 'त्रुटी: $e';
@@ -78,7 +90,7 @@ class BooksProvider extends ChangeNotifier {
       notifyListeners();
 
       final response = await ApiClient.uploadFile(
-        ApiEndpoints.books + '/upload',
+        '${ApiEndpoints.books}/upload',
         filePath: filePath,
         fieldName: 'file',
         fileBytes: fileBytes,
@@ -110,120 +122,125 @@ class BooksProvider extends ChangeNotifier {
     }
   }
 
-  void _checkActiveProcessing() {
-    bool hasActive = _books.any((b) => b.status != 'completed' && b.status != 'failed');
-    if (hasActive && (_statusPollingTimer == null || !_statusPollingTimer!.isActive)) {
-      _statusPollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-        _pollActiveBooks();
-      });
+  Future<bool> deleteBook(int bookId) async {
+    try {
+      final response = await ApiClient.delete('${ApiEndpoints.books}/$bookId');
+      if (response.isSuccess) {
+        _books.removeWhere((b) => b.id == bookId);
+        notifyListeners();
+        return true;
+      } else {
+        _errorMessage = response.errorMessage ?? 'हटवणे अयशस्वी.';
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = 'हटवताना त्रुटी: $e';
+      notifyListeners();
+      return false;
     }
   }
 
-  void _startStatusPolling(int bookId) {
-    _statusPollingTimer?.cancel();
-    _statusPollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
-      final response = await ApiClient.get(ApiEndpoints.bookStatus(bookId));
-      if (response.isSuccess && response.data != null) {
-        final statusData = response.data;
-        int idx = _books.indexWhere((b) => b.id == bookId);
-        if (idx != -1) {
-          BookModel old = _books[idx];
-          _books[idx] = BookModel(
+  Future<bool> renameBook(int bookId, String newTitle) async {
+    try {
+      final response = await ApiClient.put(
+        '${ApiEndpoints.books}/$bookId/rename',
+        body: {'title': newTitle},
+      );
+      if (response.isSuccess) {
+        final index = _books.indexWhere((b) => b.id == bookId);
+        if (index != -1) {
+          final old = _books[index];
+          _books[index] = BookModel(
             id: old.id,
-            title: old.title,
+            title: newTitle,
             originalFilename: old.originalFilename,
             subjectId: old.subjectId,
             subjectName: old.subjectName,
-            totalPages: statusData['total_pages'] ?? old.totalPages,
+            totalPages: old.totalPages,
             fileSizeBytes: old.fileSizeBytes,
             isScanned: old.isScanned,
-            status: statusData['status'] ?? old.status,
-            statusMessage: statusData['status_message'] ?? old.statusMessage,
-            progressPercent: (statusData['progress_percent'] as num?)?.toDouble() ?? old.progressPercent,
-            currentPageProcessing: statusData['current_page'] ?? old.currentPageProcessing,
+            status: old.status,
+            statusMessage: old.statusMessage,
+            progressPercent: old.progressPercent,
+            currentPageProcessing: old.currentPageProcessing,
             totalChunks: old.totalChunks,
-            isIndexed: statusData['is_indexed'] ?? old.isIndexed,
+            sourceType: old.sourceType,
+            isGenerated: old.isGenerated,
+            sourceBookId: old.sourceBookId,
+            chatSessionId: old.chatSessionId,
+            isIndexed: old.isIndexed,
             createdAt: old.createdAt,
           );
           notifyListeners();
-
-          if (statusData['status'] == 'completed' || statusData['status'] == 'failed') {
-            timer.cancel();
-          }
         }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      _errorMessage = 'नाव बदलताना त्रुटी: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  void _checkActiveProcessing() {
+    final hasProcessing = _books.any((b) => b.status == 'pending' || b.status == 'processing');
+    if (hasProcessing && _statusPollingTimer == null) {
+      _startStatusPolling();
+    }
+  }
+
+  void _startStatusPolling([int? specificBookId]) {
+    _statusPollingTimer?.cancel();
+    _statusPollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      bool stillProcessing = false;
+      for (int i = 0; i < _books.length; i++) {
+        final b = _books[i];
+        if (b.status == 'pending' || b.status == 'processing') {
+          try {
+            final res = await ApiClient.get('${ApiEndpoints.books}/${b.id}/status');
+            if (res.isSuccess && res.data != null) {
+              final data = res.data as Map<String, dynamic>;
+              final newStatus = data['status'] ?? b.status;
+              final newProgress = (data['progress_percent'] as num?)?.toDouble() ?? b.progressPercent;
+              final newMsg = data['status_message'] ?? b.statusMessage;
+
+              _books[i] = BookModel(
+                id: b.id,
+                title: b.title,
+                originalFilename: b.originalFilename,
+                subjectId: b.subjectId,
+                subjectName: b.subjectName,
+                totalPages: data['total_pages'] ?? b.totalPages,
+                fileSizeBytes: b.fileSizeBytes,
+                isScanned: b.isScanned,
+                status: newStatus,
+                statusMessage: newMsg,
+                progressPercent: newProgress,
+                currentPageProcessing: data['current_page'] ?? b.currentPageProcessing,
+                totalChunks: b.totalChunks,
+                sourceType: b.sourceType,
+                isGenerated: b.isGenerated,
+                sourceBookId: b.sourceBookId,
+                chatSessionId: b.chatSessionId,
+                isIndexed: newStatus == 'completed',
+                createdAt: b.createdAt,
+              );
+              notifyListeners();
+
+              if (newStatus == 'pending' || newStatus == 'processing') {
+                stillProcessing = true;
+              }
+            }
+          } catch (_) {}
+        }
+      }
+      if (!stillProcessing) {
+        timer.cancel();
+        _statusPollingTimer = null;
       }
     });
-  }
-
-  Future<void> _pollActiveBooks() async {
-    bool anyStillActive = false;
-    for (int i = 0; i < _books.length; i++) {
-      if (_books[i].status != 'completed' && _books[i].status != 'failed') {
-        anyStillActive = true;
-        final response = await ApiClient.get(ApiEndpoints.bookStatus(_books[i].id));
-        if (response.isSuccess && response.data != null) {
-          final s = response.data;
-          BookModel old = _books[i];
-          _books[i] = BookModel(
-            id: old.id,
-            title: old.title,
-            originalFilename: old.originalFilename,
-            subjectId: old.subjectId,
-            subjectName: old.subjectName,
-            totalPages: s['total_pages'] ?? old.totalPages,
-            fileSizeBytes: old.fileSizeBytes,
-            isScanned: old.isScanned,
-            status: s['status'] ?? old.status,
-            statusMessage: s['status_message'] ?? old.statusMessage,
-            progressPercent: (s['progress_percent'] as num?)?.toDouble() ?? old.progressPercent,
-            currentPageProcessing: s['current_page'] ?? old.currentPageProcessing,
-            totalChunks: old.totalChunks,
-            isIndexed: s['is_indexed'] ?? old.isIndexed,
-            createdAt: old.createdAt,
-          );
-        }
-      }
-    }
-    notifyListeners();
-    if (!anyStillActive) {
-      _statusPollingTimer?.cancel();
-    }
-  }
-
-  Future<bool> deleteBook(int bookId) async {
-    final response = await ApiClient.delete('${ApiEndpoints.books}/$bookId');
-    if (response.isSuccess) {
-      _books.removeWhere((b) => b.id == bookId);
-      notifyListeners();
-      return true;
-    }
-    return false;
-  }
-
-  Future<bool> renameBook(int bookId, String newTitle, String? newSubject) async {
-    final response = await ApiClient.patch(
-      '${ApiEndpoints.books}/$bookId',
-      body: {'title': newTitle, 'subject_name': newSubject},
-    );
-    if (response.isSuccess && response.data != null) {
-      int idx = _books.indexWhere((b) => b.id == bookId);
-      if (idx != -1) {
-        _books[idx] = BookModel.fromJson(response.data as Map<String, dynamic>);
-        notifyListeners();
-      }
-      return true;
-    }
-    return false;
-  }
-
-  Future<String> getPageContent(int bookId, int page) async {
-    try {
-      final response = await ApiClient.get(ApiEndpoints.bookPage(bookId, page));
-      if (response.isSuccess && response.data != null) {
-        return response.data['text_content'] ?? response.data['content'] ?? '';
-      }
-    } catch (_) {}
-    return '';
   }
 
   @override

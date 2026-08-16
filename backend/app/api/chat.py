@@ -1,22 +1,45 @@
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import delete
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.schema import User, ChatSession, ChatMessage
 from app.schemas.pydantic_models import (
-    ChatRequest, ChatMessageResponse, ChatSessionResponse, SourceCitation
+    ChatMessageResponse, ChatSessionResponse, SourceCitation
 )
-from app.services.ai.agent import mpsc_agent
-from app.services.tts.tts_service import tts_service
+from app.services.ai.direct_chatgpt_service import direct_chatgpt_service
 from app.utils.logger import logger
 
-router = APIRouter(tags=["AI Chat & Assistant"])
+router = APIRouter(tags=["ChatGPT Workspace"])
 
-@router.get("/chat/sessions", response_model=List[ChatSessionResponse])
-async def list_chat_sessions(user_id: int = 1, db: AsyncSession = Depends(get_db)):
+class DirectChatRequest(BaseModel):
+    session_id: Optional[int] = None
+    message: str
+    book_id: Optional[int] = None
+    book_ids: Optional[List[int]] = None
+    mode: Optional[str] = "general_chat"
+    user_id: Optional[int] = 1
+
+class CreateSessionRequest(BaseModel):
+    title: Optional[str] = "नवीन चर्चा"
+    mode: Optional[str] = "general_chat"
+    attached_book_ids: Optional[List[int]] = []
+    user_id: Optional[int] = 1
+
+class GenerateArtifactRequest(BaseModel):
+    session_id: Optional[int] = None
+    source_book_id: Optional[int] = None
+    title: str = "MPSC Study Notes"
+    content: str
+    artifact_type: str = "pdf"  # "pdf" or "txt"
+    user_id: Optional[int] = 1
+
+@router.get("/chat/sessions")
+async def list_chat_sessions(user_id: int = Query(1), db: AsyncSession = Depends(get_db)):
     """
     Returns all chat conversation sessions for the user.
     """
@@ -27,177 +50,140 @@ async def list_chat_sessions(user_id: int = 1, db: AsyncSession = Depends(get_db
         .order_by(ChatSession.updated_at.desc())
     )
     sessions = result.scalars().all()
-    return sessions
+    return [
+        {
+            "id": s.id,
+            "title": s.title,
+            "mode": s.mode,
+            "attached_book_ids": s.attached_book_ids or [],
+            "message_count": len(s.messages) if s.messages else 0,
+            "created_at": s.created_at.isoformat() if s.created_at else "",
+            "updated_at": s.updated_at.isoformat() if s.updated_at else ""
+        }
+        for s in sessions
+    ]
 
-@router.post("/chat/sessions", response_model=ChatSessionResponse)
+@router.post("/chat/sessions")
 async def create_chat_session(
-    title: str = "नवीन चर्चा",
-    mode: str = "general_chat",
-    user_id: int = 1,
+    payload: CreateSessionRequest,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Creates a new chat session.
+    Creates a new persistent chat session with optional attached books.
     """
-    # Ensure default user exists
+    user_id = payload.user_id or 1
     u_res = await db.execute(select(User).where(User.id == user_id))
     if not u_res.scalar_one_or_none():
-        user = User(id=user_id, username="mpsc_aspirant", display_name="MPSC Aspirant")
+        user = User(id=user_id, username=f"user_{user_id}", display_name="MPSC Aspirant")
         db.add(user)
         await db.commit()
 
     session = ChatSession(
         user_id=user_id,
-        title=title,
-        mode=mode
+        title=payload.title or "नवीन चर्चा",
+        mode=payload.mode or "general_chat",
+        attached_book_ids=payload.attached_book_ids or []
     )
     db.add(session)
     await db.commit()
     await db.refresh(session)
-    return session
+    return {
+        "id": session.id,
+        "title": session.title,
+        "mode": session.mode,
+        "attached_book_ids": session.attached_book_ids or [],
+        "created_at": session.created_at.isoformat() if session.created_at else ""
+    }
 
-@router.get("/chat/sessions/{session_id}/messages", response_model=List[ChatMessageResponse])
-async def get_session_messages(session_id: int, db: AsyncSession = Depends(get_db)):
+@router.get("/chat/sessions/{session_id}/messages")
+async def get_session_messages(session_id: int, user_id: int = Query(1), db: AsyncSession = Depends(get_db)):
     """
-    Returns all messages for a specific chat session.
+    Returns all messages for a specific chat session with ownership verification.
     """
+    s_res = await db.execute(
+        select(ChatSession).where(ChatSession.id == session_id, ChatSession.user_id == user_id)
+    )
+    session = s_res.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="चॅट संभाषण सापडले नाही.")
+
     result = await db.execute(
         select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at.asc())
     )
     messages = result.scalars().all()
     
-    # Format sources
-    response_list = []
-    for m in messages:
-        citations = [SourceCitation(**s) for s in (m.sources or []) if isinstance(s, dict)]
-        response_list.append(ChatMessageResponse(
-            id=m.id,
-            sender=m.sender,
-            message=m.message,
-            sources=citations,
-            mode=m.mode,
-            has_audio=m.has_audio,
-            audio_url=m.audio_url,
-            created_at=m.created_at
-        ))
-    return response_list
-
-@router.post("/chat/message", response_model=ChatMessageResponse)
-async def send_chat_message(request: ChatRequest, db: AsyncSession = Depends(get_db)):
-    """
-    Processes user question with RAG, Marathi prompt engineering, and returns answer with sources.
-    """
-    user_id = 1
-    # Ensure user exists
-    u_res = await db.execute(select(User).where(User.id == user_id))
-    if not u_res.scalar_one_or_none():
-        user = User(id=user_id, username="mpsc_aspirant", display_name="MPSC Aspirant")
-        db.add(user)
-        await db.commit()
-
-    # Get or create chat session
-    session_id = request.session_id
-    if not session_id:
-        # Create new session with title from query
-        title_snippet = request.message[:30] + ("..." if len(request.message) > 30 else "")
-        session = ChatSession(
-            user_id=user_id,
-            title=title_snippet,
-            mode=request.mode or "general_chat"
-        )
-        db.add(session)
-        await db.commit()
-        await db.refresh(session)
-        session_id = session.id
-    else:
-        s_res = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
-        session = s_res.scalar_one_or_none()
-        if not session:
-            session = ChatSession(user_id=user_id, title="नवीन चर्चा", mode=request.mode or "general_chat")
-            db.add(session)
-            await db.commit()
-            await db.refresh(session)
-            session_id = session.id
-
-    # Save user message
-    user_msg = ChatMessage(
-        session_id=session_id,
-        sender="user",
-        message=request.message,
-        mode=request.mode or "general_chat"
-    )
-    db.add(user_msg)
-    await db.commit()
-
-    # Fetch recent history
-    history_res = await db.execute(
-        select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at.asc())
-    )
-    all_msgs = history_res.scalars().all()
-    history = [{"role": m.sender, "content": m.message} for m in all_msgs[-6:]]
-
-    # Execute AI Agent
-    result = await mpsc_agent.execute(
-        user_message=request.message,
-        mode=request.mode or session.mode or "general_chat",
-        user_id=user_id,
-        book_id=request.book_id,
-        subject_id=request.subject_id,
-        history=history,
-        db_session=db
-    )
-
-    answer = result["answer"]
-    citations_data = [c.dict() if hasattr(c, 'dict') else c for c in result["citations"]]
-
-    # Pre-render speech in single authorized MJ voice (mj_primary)
-    from app.services.voice_service import voice_service
-    from app.services.mj_assistant_service import clean_text_for_speech
-
-    speech_text = clean_text_for_speech(answer)
-    voice_res = await voice_service.generate_voice(
-        text=speech_text,
-        emotion="explaining" if result.get("citations") else "friendly",
-        speed=0.95
-    )
-    audio_url = voice_res.get("audio_url")
-    has_audio = bool(audio_url)
-
-    # Save AI message
-    ai_msg = ChatMessage(
-        session_id=session_id,
-        sender="ai",
-        message=answer,
-        sources=citations_data,
-        mode=result.get("mode", "general_chat"),
-        has_audio=has_audio,
-        audio_url=audio_url
-    )
-    db.add(ai_msg)
-    await db.commit()
-    await db.refresh(ai_msg)
-
-    return ChatMessageResponse(
-        id=ai_msg.id,
-        sender=ai_msg.sender,
-        message=ai_msg.message,
-        sources=result["citations"],
-        mode=ai_msg.mode,
-        has_audio=ai_msg.has_audio,
-        audio_url=ai_msg.audio_url,
-        created_at=ai_msg.created_at
-    )
+    return [
+        {
+            "id": m.id,
+            "session_id": m.session_id,
+            "sender": m.sender,
+            "message": m.message,
+            "sources": m.sources or [],
+            "mode": m.mode,
+            "has_audio": False,
+            "audio_url": None,
+            "created_at": m.created_at.isoformat() if m.created_at else ""
+        }
+        for m in messages
+    ]
 
 @router.delete("/chat/sessions/{session_id}")
-async def delete_chat_session(session_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_chat_session(session_id: int, user_id: int = Query(1), db: AsyncSession = Depends(get_db)):
     """
-    Deletes a conversation session and its messages.
+    Deletes a chat session and all its messages.
     """
-    result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
-    session = result.scalar_one_or_none()
+    s_res = await db.execute(
+        select(ChatSession).where(ChatSession.id == session_id, ChatSession.user_id == user_id)
+    )
+    session = s_res.scalar_one_or_none()
     if not session:
-        raise HTTPException(status_code=404, detail="सत्र सापडले नाही.")
+        raise HTTPException(status_code=404, detail="चॅट संभाषण सापडले नाही.")
 
+    await db.execute(delete(ChatMessage).where(ChatMessage.session_id == session_id))
     await db.delete(session)
     await db.commit()
-    return {"message": "चर्चा सत्र यशस्वीरित्या हटवले.", "session_id": session_id}
+    return {"success": True, "message": "चॅट संभाषण हटवले."}
+
+@router.post("/chat/message")
+async def send_chat_message(request: DirectChatRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Direct official OpenAI ChatGPT messaging with native document attachments,
+    session persistence, and natural Marathi responses.
+    """
+    user_id = request.user_id or 1
+    
+    # Consolidate attached book IDs
+    attached_ids = []
+    if request.book_ids:
+        attached_ids.extend(request.book_ids)
+    if request.book_id and request.book_id not in attached_ids:
+        attached_ids.append(request.book_id)
+
+    response_data = await direct_chatgpt_service.execute_chat(
+        user_message=request.message,
+        session_id=request.session_id,
+        user_id=user_id,
+        attached_book_ids=attached_ids,
+        db=db,
+        mode=request.mode or "general_chat"
+    )
+
+    return response_data
+
+@router.post("/chat/generate-artifact")
+async def generate_chat_artifact(request: GenerateArtifactRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Generates a downloadable artifact (PDF or TXT) from ChatGPT output,
+    uploads it permanently to Supabase Storage, and registers it in the library.
+    """
+    user_id = request.user_id or 1
+    result = await direct_chatgpt_service.generate_and_save_artifact(
+        title=request.title,
+        content=request.content,
+        artifact_type=request.artifact_type,
+        user_id=user_id,
+        session_id=request.session_id,
+        source_book_id=request.source_book_id,
+        db=db
+    )
+    return result

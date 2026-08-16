@@ -12,7 +12,10 @@ class BookModel {
   final double progressPercent;
   final int currentPageProcessing;
   final int totalChunks;
-  final String sourceType;
+  final String sourceType; // 'pdf', 'txt', 'image'
+  final bool isGenerated;
+  final int? sourceBookId;
+  final int? chatSessionId;
   final bool isIndexed;
   final String createdAt;
 
@@ -31,11 +34,22 @@ class BookModel {
     required this.currentPageProcessing,
     required this.totalChunks,
     this.sourceType = 'pdf',
+    this.isGenerated = false,
+    this.sourceBookId,
+    this.chatSessionId,
     required this.isIndexed,
     required this.createdAt,
   });
 
   factory BookModel.fromJson(Map<String, dynamic> json) {
+    final filename = json['original_filename']?.toString().toLowerCase() ?? '';
+    String detectedType = json['source_type'] ?? 'pdf';
+    if (filename.endsWith('.txt')) {
+      detectedType = 'txt';
+    } else if (filename.endsWith('.png') || filename.endsWith('.jpg') || filename.endsWith('.jpeg')) {
+      detectedType = 'image';
+    }
+
     return BookModel(
       id: json['id'] ?? 0,
       title: json['title'] ?? '',
@@ -50,7 +64,10 @@ class BookModel {
       progressPercent: (json['progress_percent'] as num?)?.toDouble() ?? 0.0,
       currentPageProcessing: json['current_page_processing'] ?? 0,
       totalChunks: json['total_chunks'] ?? 0,
-      sourceType: json['source_type'] ?? (json['original_filename']?.toString().toLowerCase().endsWith('.txt') == true ? 'txt' : 'pdf'),
+      sourceType: detectedType,
+      isGenerated: json['is_generated'] ?? false,
+      sourceBookId: json['source_book_id'],
+      chatSessionId: json['chat_session_id'],
       isIndexed: json['is_indexed'] ?? false,
       createdAt: json['created_at'] ?? '',
     );
@@ -78,6 +95,10 @@ class BookModel {
         'progress_percent': progressPercent,
         'current_page_processing': currentPageProcessing,
         'total_chunks': totalChunks,
+        'source_type': sourceType,
+        'is_generated': isGenerated,
+        'source_book_id': sourceBookId,
+        'chat_session_id': chatSessionId,
         'is_indexed': isIndexed,
         'created_at': createdAt,
       };

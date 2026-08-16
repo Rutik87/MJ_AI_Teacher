@@ -80,6 +80,9 @@ class Book(Base):
     checksum = Column(String(64), index=True, nullable=True)  # SHA-256 for duplicate detection
     storage_path = Column(String(500), nullable=True)  # Path in Supabase Storage bucket
     source_type = Column(String(20), default="pdf")  # 'pdf' or 'txt'
+    is_generated = Column(Boolean, default=False)
+    source_book_id = Column(Integer, ForeignKey("books.id"), nullable=True)
+    chat_session_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -296,7 +299,8 @@ class ChatSession(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     title = Column(String(255), default="नवीन चर्चा")
-    mode = Column(String(50), default="general_chat")  # general_chat, teacher_mode, exam_mode, pyq_analysis
+    mode = Column(String(50), default="general_chat")
+    attached_book_ids = Column(JSON, default=list)  # List of attached book IDs: [1, 2]
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

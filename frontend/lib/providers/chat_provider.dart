@@ -1,22 +1,22 @@
 import 'package:flutter/foundation.dart';
 import 'package:frontend/core/constants/api_endpoints.dart';
 import 'package:frontend/core/network/api_client.dart';
+import 'package:frontend/models/book.dart';
 import 'package:frontend/models/chat_message.dart';
 
 class ChatProvider extends ChangeNotifier {
   List<ChatMessageModel> _messages = [];
   List<ChatSessionModel> _sessions = [];
   int? _currentSessionId;
-  int? _selectedBookFilter;
-  String? _selectedBookTitle;
+  List<BookModel> _attachedBooks = [];
   bool _isLoading = false;
   String? _errorMessage;
 
   List<ChatMessageModel> get messages => _messages;
   List<ChatSessionModel> get sessions => _sessions;
   int? get currentSessionId => _currentSessionId;
-  int? get selectedBookFilter => _selectedBookFilter;
-  String? get selectedBookTitle => _selectedBookTitle;
+  List<BookModel> get attachedBooks => _attachedBooks;
+  bool get hasAttachments => _attachedBooks.isNotEmpty;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
@@ -24,15 +24,20 @@ class ChatProvider extends ChangeNotifier {
     fetchSessions();
   }
 
-  void setBookFilter(int? bookId, {String? bookTitle}) {
-    _selectedBookFilter = bookId;
-    _selectedBookTitle = bookTitle;
+  void attachBook(BookModel book) {
+    if (!_attachedBooks.any((b) => b.id == book.id)) {
+      _attachedBooks.add(book);
+      notifyListeners();
+    }
+  }
+
+  void removeAttachedBook(int bookId) {
+    _attachedBooks.removeWhere((b) => b.id == bookId);
     notifyListeners();
   }
 
-  void clearBookFilter() {
-    _selectedBookFilter = null;
-    _selectedBookTitle = null;
+  void clearAttachedBooks() {
+    _attachedBooks.clear();
     notifyListeners();
   }
 
@@ -72,10 +77,12 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> startNewSession({String title = 'नवीन चर्चा', int? bookId, String? bookTitle}) async {
+  Future<void> startNewSession({String title = 'नवीन चर्चा', BookModel? initialBook}) async {
     _currentSessionId = null;
-    _selectedBookFilter = bookId;
-    _selectedBookTitle = bookTitle;
+    _attachedBooks.clear();
+    if (initialBook != null) {
+      _attachedBooks.add(initialBook);
+    }
     _messages = [];
     _errorMessage = null;
     notifyListeners();
@@ -83,7 +90,7 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> deleteSession(int sessionId) async {
     try {
-      await ApiClient.delete(ApiEndpoints.chatSessionMessages(sessionId));
+      await ApiClient.delete('${ApiEndpoints.baseUrl}/chat/sessions/$sessionId');
       _sessions.removeWhere((s) => s.id == sessionId);
       if (_currentSessionId == sessionId) {
         startNewSession();
@@ -97,7 +104,6 @@ class ChatProvider extends ChangeNotifier {
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
-    // Add user message to UI immediately
     final tempUserMsg = ChatMessageModel(
       id: DateTime.now().millisecondsSinceEpoch,
       sender: 'user',
@@ -113,20 +119,26 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final payload = {
+        'session_id': _currentSessionId,
+        'message': text.trim(),
+        'mode': 'general_chat',
+        'book_ids': _attachedBooks.map((b) => b.id).toList(),
+      };
+
       final response = await ApiClient.post(
         ApiEndpoints.chatMessage,
-        body: {
-          'session_id': _currentSessionId,
-          'message': text.trim(),
-          'mode': 'general_chat',
-          'book_id': _selectedBookFilter,
-        },
+        body: payload,
       );
 
       if (response.isSuccess && response.data != null) {
-        final aiMsg = ChatMessageModel.fromJson(response.data as Map<String, dynamic>);
+        final data = response.data as Map<String, dynamic>;
+        final aiMsg = ChatMessageModel.fromJson(data);
         _messages.add(aiMsg);
-        fetchSessions(); // update session list
+        if (data['session_id'] != null) {
+          _currentSessionId = data['session_id'];
+        }
+        fetchSessions();
       } else {
         _errorMessage = response.errorMessage ?? 'ChatGPT कडून प्रतिसाद मिळाला नाही.';
       }
@@ -135,6 +147,36 @@ class ChatProvider extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<Map<String, dynamic>?> generateArtifact({
+    required String title,
+    required String content,
+    required String artifactType, // 'pdf' or 'txt'
+    int? sourceBookId,
+  }) async {
+    try {
+      final payload = {
+        'session_id': _currentSessionId,
+        'source_book_id': sourceBookId ?? (_attachedBooks.isNotEmpty ? _attachedBooks.first.id : null),
+        'title': title,
+        'content': content,
+        'artifact_type': artifactType,
+      };
+
+      final response = await ApiClient.post(
+        '${ApiEndpoints.baseUrl}/chat/generate-artifact',
+        body: payload,
+      );
+
+      if (response.isSuccess && response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Generate artifact error: $e');
+      return null;
     }
   }
 }

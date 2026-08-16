@@ -40,6 +40,9 @@ class BookResponse(BookBase):
     checksum: Optional[str] = None
     storage_path: Optional[str] = None
     source_type: str = "pdf"
+    is_generated: bool = False
+    source_book_id: Optional[int] = None
+    chat_session_id: Optional[int] = None
     is_indexed: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
