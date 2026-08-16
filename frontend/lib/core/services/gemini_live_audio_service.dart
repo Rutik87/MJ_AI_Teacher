@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -21,6 +22,9 @@ class GeminiLiveAudioService extends ChangeNotifier {
   final AudioRecorder _audioRecorder = AudioRecorder();
   final AudioPlayer _audioPlayer = AudioPlayer();
 
+  final Queue<Uint8List> _audioQueue = Queue<Uint8List>();
+  bool _isPlayingAudio = false;
+
   WebSocketChannel? _channel;
   StreamSubscription? _wsSubscription;
   StreamSubscription<RecordState>? _recordStateSubscription;
@@ -40,14 +44,40 @@ class GeminiLiveAudioService extends ChangeNotifier {
   bool get isConnected => _state == GeminiLiveState.ready || _state == GeminiLiveState.listening || _state == GeminiLiveState.speaking;
 
   GeminiLiveAudioService() {
+    _initAudioContext();
+
     _audioPlayer.onPlayerStateChanged.listen((pState) {
       if (pState == PlayerState.completed || pState == PlayerState.stopped) {
-        if (_state == GeminiLiveState.speaking) {
-          _state = GeminiLiveState.listening;
-          notifyListeners();
-        }
+        debugPrint('[LIVE][AUDIO] playback_stopped');
+        _isPlayingAudio = false;
+        _playNextInQueue();
       }
     });
+  }
+
+  void _initAudioContext() {
+    try {
+      AudioPlayer.global.setAudioContext(
+        AudioContext(
+          android: const AudioContextAndroid(
+            isSpeakerphoneOn: true,
+            stayAwake: true,
+            contentType: AndroidContentType.speech,
+            usageType: AndroidUsageType.assistanceNavigationGuidance,
+            audioFocus: AndroidAudioFocus.gainTransientExclusive,
+          ),
+          iOS: AudioContextIOS(
+            category: AVAudioSessionCategory.playAndRecord,
+            options: const {
+              AVAudioSessionOptions.defaultToSpeaker,
+            },
+          ),
+        ),
+      );
+      debugPrint('[LIVE][AUDIO] AudioContext configured with isSpeakerphoneOn=true');
+    } catch (e) {
+      debugPrint('[LIVE][AUDIO] Error setting AudioContext: $e');
+    }
   }
 
   String _getWebSocketUrl() {
@@ -71,7 +101,7 @@ class GeminiLiveAudioService extends ChangeNotifier {
     notifyListeners();
 
     final wsUrl = _getWebSocketUrl();
-    debugPrint('[GeminiLiveAudioService] Connecting to WS: $wsUrl');
+    debugPrint('[LIVE][WS] connecting to $wsUrl');
 
     try {
       final uri = Uri.parse(wsUrl);
@@ -80,19 +110,20 @@ class GeminiLiveAudioService extends ChangeNotifier {
       _wsSubscription = _channel!.stream.listen(
         (message) => _handleServerMessage(message),
         onError: (err) {
-          debugPrint('[GeminiLiveAudioService] WS error: $err');
+          debugPrint('[LIVE][WS] connection error: $err');
           _state = GeminiLiveState.error;
           _errorMessage = 'WebSocket कनेक्शन त्रुटी: $err';
           notifyListeners();
         },
         onDone: () {
-          debugPrint('[GeminiLiveAudioService] WS connection closed.');
+          debugPrint('[LIVE][WS] connection closed.');
           _state = GeminiLiveState.disconnected;
           notifyListeners();
         },
       );
+      debugPrint('[LIVE][WS] connected');
     } catch (e) {
-      debugPrint('[GeminiLiveAudioService] Connect failed: $e');
+      debugPrint('[LIVE][WS] connect failed: $e');
       _state = GeminiLiveState.error;
       _errorMessage = 'कनेक्ट करता आले नाही: $e';
       notifyListeners();
@@ -106,41 +137,81 @@ class GeminiLiveAudioService extends ChangeNotifier {
 
       if (msgType == 'ready') {
         _state = GeminiLiveState.ready;
-        debugPrint('[GeminiLiveAudioService] Gemini Live is ready (Model: ${data['model']}, Voice: ${data['voice']})');
+        debugPrint('[LIVE][WS] ready received model=${data['model']}, voice=${data['voice']}');
         startMicrophone();
       } else if (msgType == 'audio') {
         final rawB64 = data['data'] as String?;
         final mimeType = (data['mime_type'] as String? ?? '').toLowerCase();
         if (rawB64 != null && rawB64.isNotEmpty) {
-          _state = GeminiLiveState.speaking;
           final bytes = base64.decode(rawB64);
+          debugPrint('[LIVE][WS] audio_received size=${bytes.length} mime=$mimeType');
+          debugPrint('[LIVE][AUDIO] buffer_received size=${bytes.length}');
+          
+          Uint8List playBytes;
           if (mimeType.contains('pcm')) {
-            _playAudioBytes(bytes);
+            playBytes = _pcmToWav(bytes, sampleRate: 24000);
+            debugPrint('[LIVE][AUDIO] pcm_decoded to wav size=${playBytes.length}');
           } else {
-            _audioPlayer.play(BytesSource(bytes));
+            playBytes = bytes;
           }
+
+          _enqueueAudio(playBytes);
         }
       } else if (msgType == 'transcript') {
         final text = data['text'] as String? ?? '';
         _assistantTranscript += text;
+        debugPrint('[LIVE][WS] transcript_received: $text');
         notifyListeners();
       } else if (msgType == 'interrupted') {
-        // Instant Barge-In Cancellation
-        debugPrint('[GeminiLiveAudioService] Barge-in interruption received! Flushing audio buffer.');
+        debugPrint('[LIVE][WS] interruption_received Flushing audio buffer.');
         _purgeAudioBuffer();
         _state = GeminiLiveState.listening;
         notifyListeners();
       } else if (msgType == 'turn_complete') {
-        if (_state != GeminiLiveState.speaking) {
+        debugPrint('[LIVE][WS] turn_complete received');
+        if (!_isPlayingAudio && _audioQueue.isEmpty) {
           _state = GeminiLiveState.listening;
+          notifyListeners();
         }
-        notifyListeners();
       } else if (msgType == 'error') {
         _errorMessage = data['message'] as String?;
+        debugPrint('[LIVE][WS] error from server: $_errorMessage');
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('[GeminiLiveAudioService] Error parsing server message: $e');
+      debugPrint('[LIVE][WS] error parsing message: $e');
+    }
+  }
+
+  void _enqueueAudio(Uint8List audioBytes) {
+    _audioQueue.add(audioBytes);
+    if (!_isPlayingAudio) {
+      _playNextInQueue();
+    }
+  }
+
+  Future<void> _playNextInQueue() async {
+    if (_audioQueue.isEmpty) {
+      _isPlayingAudio = false;
+      if (_state == GeminiLiveState.speaking) {
+        _state = GeminiLiveState.listening;
+        notifyListeners();
+      }
+      return;
+    }
+
+    _isPlayingAudio = true;
+    _state = GeminiLiveState.speaking;
+    notifyListeners();
+
+    final nextChunk = _audioQueue.removeFirst();
+    try {
+      debugPrint('[LIVE][AUDIO] playback_started chunk_size=${nextChunk.length}');
+      await _audioPlayer.play(BytesSource(nextChunk));
+    } catch (e) {
+      debugPrint('[LIVE][AUDIO] playback error: $e');
+      _isPlayingAudio = false;
+      _playNextInQueue();
     }
   }
 
@@ -148,11 +219,13 @@ class GeminiLiveAudioService extends ChangeNotifier {
     final hasPermission = await _audioRecorder.hasPermission();
     if (!hasPermission) {
       _errorMessage = 'मायक्रोफोन परवानगी आवश्यक आहे.';
+      debugPrint('[LIVE][MIC] microphone permission denied');
       notifyListeners();
       return;
     }
 
     try {
+      debugPrint('[LIVE][MIC] recording_started format=pcm16bits rate=16000 channels=1');
       final stream = await _audioRecorder.startStream(
         const RecordConfig(
           encoder: AudioEncoder.pcm16bits,
@@ -167,15 +240,21 @@ class GeminiLiveAudioService extends ChangeNotifier {
       _audioStreamSubscription?.cancel();
       _audioStreamSubscription = stream.listen((chunk) {
         if (_channel != null && chunk.isNotEmpty) {
-          // Send raw binary PCM audio frame to backend
+          debugPrint('[LIVE][MIC] chunk_received size=${chunk.length}');
           _channel!.sink.add(chunk);
+          debugPrint('[LIVE][WS] audio_sent size=${chunk.length}');
 
-          // Update amplitude for orb animation
+          // Check if user is speaking while audio is playing (Barge-in detection)
           _updateAmplitude(chunk);
+          if (_isPlayingAudio && _amplitude > 0.35) {
+            debugPrint('[LIVE][MIC] user speech detected during playback -> local barge-in purge');
+            _purgeAudioBuffer();
+            _channel!.sink.add(json.encode({'type': 'interrupted'}));
+          }
         }
       });
     } catch (e) {
-      debugPrint('[GeminiLiveAudioService] Mic stream start failed: $e');
+      debugPrint('[LIVE][MIC] stream start failed: $e');
     }
   }
 
@@ -201,7 +280,6 @@ class GeminiLiveAudioService extends ChangeNotifier {
     final totalAudioLen = totalDataLen + 36;
 
     final header = ByteData(44);
-    // RIFF chunk descriptor
     header.setUint8(0, 0x52); // 'R'
     header.setUint8(1, 0x49); // 'I'
     header.setUint8(2, 0x46); // 'F'
@@ -211,19 +289,17 @@ class GeminiLiveAudioService extends ChangeNotifier {
     header.setUint8(9, 0x41); // 'A'
     header.setUint8(10, 0x56); // 'V'
     header.setUint8(11, 0x45); // 'E'
-    // 'fmt ' sub-chunk
     header.setUint8(12, 0x66); // 'f'
     header.setUint8(13, 0x6D); // 'm'
     header.setUint8(14, 0x74); // 't'
     header.setUint8(15, 0x20); // ' '
-    header.setUint32(16, 16, Endian.little); // Subchunk1Size (16 for PCM)
-    header.setUint16(20, 1, Endian.little);  // AudioFormat (1 for PCM)
+    header.setUint32(16, 16, Endian.little);
+    header.setUint16(20, 1, Endian.little);
     header.setUint16(22, channels, Endian.little);
     header.setUint32(24, sampleRate, Endian.little);
     header.setUint32(28, byteRate, Endian.little);
     header.setUint16(32, blockAlign, Endian.little);
     header.setUint16(34, bitsPerSample, Endian.little);
-    // 'data' sub-chunk
     header.setUint8(36, 0x64); // 'd'
     header.setUint8(37, 0x61); // 'a'
     header.setUint8(38, 0x74); // 't'
@@ -236,69 +312,51 @@ class GeminiLiveAudioService extends ChangeNotifier {
     return wavBytes;
   }
 
-  Future<void> _playAudioBytes(Uint8List rawBytes) async {
-    try {
-      final wavBytes = _pcmToWav(rawBytes, sampleRate: 24000);
-      await _audioPlayer.play(BytesSource(wavBytes));
-    } catch (e) {
-      debugPrint('[GeminiLiveAudioService] Playback error: $e');
-    }
-  }
-
   void _purgeAudioBuffer() {
     try {
+      _audioQueue.clear();
+      _isPlayingAudio = false;
       _audioPlayer.stop();
+      debugPrint('[LIVE][AUDIO] buffer purged & playback stopped');
     } catch (e) {
-      debugPrint('[GeminiLiveAudioService] Stop error: $e');
+      debugPrint('[LIVE][AUDIO] error purging buffer: $e');
     }
   }
 
-  void sendText(String text) {
+  Future<void> sendText(String text) => sendTextTurn(text);
+
+  Future<void> sendTextTurn(String text) async {
     if (_channel != null && text.trim().isNotEmpty) {
       _liveTranscript = text;
       _assistantTranscript = '';
-      _channel!.sink.add(json.encode({
-        'type': 'text',
-        'text': text.trim()
-      }));
       notifyListeners();
+      _channel!.sink.add(json.encode({'type': 'text', 'text': text}));
+      debugPrint('[LIVE][WS] audio_sent text query: $text');
     }
   }
 
-  bool _isDisposed = false;
-
-  @override
-  void notifyListeners() {
-    if (!_isDisposed) {
-      super.notifyListeners();
-    }
-  }
-
-  Future<void> disconnect({bool notify = true}) async {
+  Future<void> disconnect() async {
     _purgeAudioBuffer();
-    await _audioStreamSubscription?.cancel();
-    await _recordStateSubscription?.cancel();
-    await _wsSubscription?.cancel();
-    try {
-      await _audioRecorder.stop();
-    } catch (_) {}
-    try {
-      await _channel?.sink.close();
-    } catch (_) {}
+    _audioStreamSubscription?.cancel();
+    _audioStreamSubscription = null;
+    await _audioRecorder.stop();
 
+    _wsSubscription?.cancel();
+    _wsSubscription = null;
+    _channel?.sink.close();
     _channel = null;
+
     _state = GeminiLiveState.disconnected;
-    if (notify && !_isDisposed) {
-      notifyListeners();
-    }
+    _amplitude = 0.0;
+    debugPrint('[LIVE][WS] disconnected');
+    notifyListeners();
   }
 
   @override
   void dispose() {
-    _isDisposed = true;
-    disconnect(notify: false);
-    _audioRecorder.dispose();
+    disconnect();
     _audioPlayer.dispose();
+    _audioRecorder.dispose();
     super.dispose();
   }
 }

@@ -25,7 +25,7 @@ router = APIRouter(prefix="/mj", tags=["Gemini Live WebSocket"])
 async def _handle_assistant_turn(websocket: WebSocket, query: str):
     """Processes conversational turns via unified AI and generates audio stream."""
     try:
-        logger.info(f"[LIVE-WS] audio sent to Gemini: {query}")
+        logger.info(f"[LIVE][GEMINI] input_audio_received query: {query}")
         
         # Detect tool execution (RAG / Current Affairs)
         q_lower = query.lower()
@@ -61,9 +61,9 @@ async def _handle_assistant_turn(websocket: WebSocket, query: str):
             "role": "assistant",
             "text": ai_reply
         })
+        logger.info(f"[LIVE][GEMINI] output_audio_received transcript length: {len(ai_reply)}")
 
         # 2. Synthesize authentic voice audio
-        logger.info("[LIVE-WS] Gemini audio received")
         audio_res = await voice_service.generate_voice(
             text=ai_reply,
             emotion="friendly"
@@ -80,12 +80,12 @@ async def _handle_assistant_turn(websocket: WebSocket, query: str):
                     "data": b64,
                     "mime_type": "audio/mp3"
                 })
-                logger.info("[LIVE-WS] audio forwarded to Flutter")
+                logger.info(f"[LIVE][WS] audio_forwarded size: {len(raw_audio)} bytes")
 
         # 3. Turn complete
         await websocket.send_json({"type": "turn_complete"})
     except Exception as e:
-        logger.error(f"[LIVE-WS] Turn processing error: {e}")
+        logger.error(f"[LIVE][GEMINI] Turn processing error: {e}")
         try:
             await websocket.send_json({
                 "type": "transcript",
@@ -102,8 +102,8 @@ async def gemini_live_websocket(websocket: WebSocket):
     WebSocket endpoint connecting Flutter client to Gemini Live Realtime Assistant.
     """
     await websocket.accept()
-    logger.info("[LIVE-WS] client connected")
-    logger.info("[LIVE-WS] auth passed")
+    logger.info("[LIVE][WS] client_connected")
+    logger.info("[LIVE][WS] authentication_ok")
 
     # Send instant ready frame to client
     await websocket.send_json({
@@ -112,7 +112,7 @@ async def gemini_live_websocket(websocket: WebSocket):
         "voice": settings.GEMINI_LIVE_VOICE,
         "message": "Gemini Live Realtime Assistant तयार आहे."
     })
-    logger.info(f"[LIVE-WS] Gemini connection established with model '{settings.GEMINI_LIVE_MODEL}' and voice '{settings.GEMINI_LIVE_VOICE}'")
+    logger.info(f"[LIVE][GEMINI] session_connected model={settings.GEMINI_LIVE_MODEL} voice={settings.GEMINI_LIVE_VOICE}")
 
     try:
         while True:
@@ -124,23 +124,27 @@ async def gemini_live_websocket(websocket: WebSocket):
                 if msg_type == "text":
                     query = data.get("text", "")
                     if query.strip():
-                        logger.info(f"[LIVE-WS] audio received text query: {query}")
+                        logger.info(f"[LIVE][GEMINI] input_audio_received text turn: {query}")
                         await _handle_assistant_turn(websocket, query)
 
                 elif msg_type == "audio_chunk":
                     raw_b64 = data.get("data", "")
                     if raw_b64:
-                        logger.debug("[LIVE-WS] audio received PCM chunk")
+                        logger.debug("[LIVE][GEMINI] input_audio_received PCM chunk")
+
+                elif msg_type == "interrupted":
+                    logger.info("[LIVE][WS] interruption_received")
+                    await websocket.send_json({"type": "interrupted"})
 
                 elif msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
 
             elif "bytes" in msg and msg["bytes"]:
-                logger.debug(f"[LIVE-WS] audio received binary bytes: {len(msg['bytes'])}")
+                logger.debug(f"[LIVE][GEMINI] input_audio_received binary bytes: {len(msg['bytes'])}")
 
     except WebSocketDisconnect:
-        logger.info("[LIVE-WS] client disconnected")
+        logger.info("[LIVE][WS] client_disconnected")
     except Exception as e:
-        logger.error(f"[LIVE-WS] Session error: {e}")
+        logger.error(f"[LIVE][WS] session_error: {e}")
     finally:
-        logger.info("[LIVE-WS] session closed")
+        logger.info("[LIVE][WS] session_closed")
