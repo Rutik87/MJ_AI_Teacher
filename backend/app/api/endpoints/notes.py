@@ -24,7 +24,7 @@ async def get_notes_health(db: AsyncSession = Depends(get_db)):
     q = select(HandwrittenNote)
     res = await db.execute(q)
     notes = res.scalars().all()
-    ready_count = sum(1 for n in notes if n.status == "ready")
+    ready_count = sum(1 for n in notes if n.status in ["ready", "completed"])
     return {
         "status": "active",
         "total_notes": len(notes),

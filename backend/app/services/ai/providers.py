@@ -1,3 +1,4 @@
+import os
 import re
 import json
 import asyncio
@@ -25,6 +26,72 @@ class BaseAIProvider(ABC):
     @abstractmethod
     def provider_name(self) -> str:
         pass
+
+
+class OpenAIProvider(BaseAIProvider):
+    """
+    Official OpenAI ChatGPT API Provider (gpt-4o-mini / gpt-4o).
+    Primary text chat & structured answer generator for MPSC AI.
+    """
+    OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions"
+
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        self.api_key = api_key or settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY", "")
+        self.model = model or settings.OPENAI_MODEL or "gpt-4o-mini"
+
+    @property
+    def provider_name(self) -> str:
+        return f"ChatGPT OpenAI ({self.model})"
+
+    def _masked_key(self) -> str:
+        if not self.api_key:
+            return "<none>"
+        return self.api_key[:4] + "***" + self.api_key[-4:] if len(self.api_key) > 8 else "***"
+
+    async def generate_completion(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        temperature: float = 0.2,
+        max_tokens: int = 2048
+    ) -> Optional[str]:
+        if not self.api_key:
+            return None
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=35.0) as client:
+                resp = await client.post(self.OPENAI_ENDPOINT, json=payload, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    choices = data.get("choices", [])
+                    if choices and len(choices) > 0:
+                        content = choices[0].get("message", {}).get("content", "")
+                        if content:
+                            logger.info(f"ChatGPT [{self.model}] response received ({len(content)} chars)")
+                            return content.strip()
+                else:
+                    logger.warning(f"OpenAI API returned HTTP {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            logger.error(f"Error connecting to OpenAI API: {e}")
+
+        return None
 
 
 class OpenRouterProvider(BaseAIProvider):

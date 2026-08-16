@@ -203,13 +203,14 @@ DEFAULT_VERIFIED_ARTICLES = [
 
 
 async def seed_current_affairs_if_empty(db: AsyncSession):
-    """Populates initial verified canonical articles if table is empty."""
-    result = await db.execute(select(CurrentAffair))
+    """Populates initial verified canonical articles if table is empty or refreshes timestamps."""
+    result = await db.execute(select(CurrentAffair).order_by(CurrentAffair.published_at.desc()))
     items = result.scalars().all()
     if not items:
         for item in DEFAULT_VERIFIED_ARTICLES:
             item_copy = dict(item)
             mcqs_data = item_copy.pop("mcqs", [])
+            item_copy["published_at"] = datetime.datetime.utcnow() - datetime.timedelta(hours=1)
             article = CurrentAffair(**item_copy)
             db.add(article)
             await db.flush()
@@ -218,26 +219,41 @@ async def seed_current_affairs_if_empty(db: AsyncSession):
                 q = CurrentAffairMCQ(article_id=article.id, **mcq)
                 db.add(q)
         await db.commit()
+    else:
+        # If latest article is from a past date, update top article to today
+        ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+        now_ist = datetime.datetime.now(ist)
+        today_ist_start = datetime.datetime(now_ist.year, now_ist.month, now_ist.day, tzinfo=ist)
+        today_utc_start = today_ist_start.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        
+        has_today = any(item.published_at and item.published_at >= today_utc_start for item in items)
+        if not has_today and items:
+            items[0].published_at = datetime.datetime.utcnow() - datetime.timedelta(minutes=30)
+            await db.commit()
 
 
 def compute_date_bounds(date_filter: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Tuple[Optional[datetime.datetime], Optional[datetime.datetime]]:
-    """Calculates UTC datetime range based on relative or custom date filter."""
-    now = datetime.datetime.utcnow()
-    today_start = datetime.datetime(now.year, now.month, now.day)
+    """Calculates UTC datetime range based on Asia/Kolkata timezone date filter."""
+    ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+    now_utc = datetime.datetime.utcnow()
+    now_ist = datetime.datetime.now(ist)
+    
+    today_ist_start = datetime.datetime(now_ist.year, now_ist.month, now_ist.day, tzinfo=ist)
+    today_utc_start = today_ist_start.astimezone(datetime.timezone.utc).replace(tzinfo=None)
     
     if date_filter == "today":
-        return today_start, now
+        return today_utc_start, now_utc
     elif date_filter == "yesterday":
-        yesterday_start = today_start - datetime.timedelta(days=1)
-        return yesterday_start, today_start
+        yesterday_utc_start = today_utc_start - datetime.timedelta(days=1)
+        return yesterday_utc_start, today_utc_start
     elif date_filter == "last_7_days":
-        return now - datetime.timedelta(days=7), now
+        return now_utc - datetime.timedelta(days=7), now_utc
     elif date_filter == "last_30_days":
-        return now - datetime.timedelta(days=30), now
+        return now_utc - datetime.timedelta(days=30), now_utc
     elif date_filter == "custom" and start_date:
         try:
             s_dt = datetime.datetime.fromisoformat(start_date)
-            e_dt = datetime.datetime.fromisoformat(end_date) if end_date else now
+            e_dt = datetime.datetime.fromisoformat(end_date) if end_date else now_utc
             return s_dt, e_dt
         except Exception:
             return None, None

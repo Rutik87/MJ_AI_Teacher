@@ -41,12 +41,14 @@ class Settings(BaseSettings):
     AUDIO_CACHE_PATH: str = str(AUDIO_DIR)
     
     # AI & RAG Configuration
-    AI_PROVIDER: str = "openrouter"  # openrouter, gemini, local, auto
+    AI_PROVIDER: str = "openai"  # openai, openrouter, gemini, local, auto
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_MODEL: str = "openrouter/free"
     GEMINI_API_KEY: str = ""
     AI_API_KEY: str = ""
-    AI_MODEL: str = "openrouter/free"
+    AI_MODEL: str = "gpt-4o-mini"
     AI_TEMPERATURE: float = 0.2
     
     # Embeddings

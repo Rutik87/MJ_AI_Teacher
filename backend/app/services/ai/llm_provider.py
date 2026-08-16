@@ -3,7 +3,9 @@ import re
 from typing import List, Dict, Any, Optional, Tuple
 from app.config import settings
 from app.utils.logger import logger
-from app.services.ai.providers import BaseAIProvider, OpenRouterProvider, GeminiProvider, HeuristicLocalProvider
+from app.services.ai.providers import (
+    BaseAIProvider, OpenAIProvider, OpenRouterProvider, GeminiProvider, HeuristicLocalProvider
+)
 from app.services.ai.prompts import (
     MPSC_TEACHER_SYSTEM_PROMPT, EXAM_MODE_SYSTEM_PROMPT,
     MCQ_GENERATION_PROMPT, PYQ_ANALYSIS_PROMPT
@@ -12,8 +14,8 @@ from app.services.ai.prompts import (
 class LLMProvider:
     """
     Unified LLM Provider Service for MPSC AI.
-    Primary AI Provider: OpenRouter Free Models Router (openrouter/free) — ₹0 Forced Billing Prevention.
-    Optional Fallback: Gemini Provider.
+    Primary AI Provider: ChatGPT OpenAI (gpt-4o-mini / gpt-4o).
+    Optional Fallback: OpenRouter Free Models Router / Gemini Provider.
     Zero-Key Fallback: Heuristic Local Engine.
     """
 
@@ -21,15 +23,18 @@ class LLMProvider:
         self._init_providers()
 
     def _init_providers(self):
+        self.openai_provider = OpenAIProvider()
         self.openrouter_provider = OpenRouterProvider()
         self.gemini_provider = GeminiProvider()
         self.heuristic_provider = HeuristicLocalProvider()
 
     def get_active_provider_name(self) -> str:
         prov_setting = settings.AI_PROVIDER.lower()
-        if prov_setting == "openrouter" or prov_setting == "auto":
+        if prov_setting == "openai" or settings.OPENAI_API_KEY:
+            return self.openai_provider.provider_name
+        elif prov_setting == "openrouter" or settings.OPENROUTER_API_KEY:
             return self.openrouter_provider.provider_name
-        elif prov_setting == "gemini":
+        elif prov_setting == "gemini" or settings.GEMINI_API_KEY:
             return self.gemini_provider.provider_name
         return self.heuristic_provider.provider_name
 
@@ -42,23 +47,29 @@ class LLMProvider:
     ) -> Tuple[Optional[str], str]:
         prov_setting = settings.AI_PROVIDER.lower()
 
-        # 1. Primary OpenRouter Free Router (If configured or provider is openrouter/auto)
-        if prov_setting in ["openrouter", "auto"] or settings.OPENROUTER_API_KEY:
-            res = await self.openrouter_provider.generate_completion(
+        # 1. Primary ChatGPT OpenAI Provider
+        if prov_setting in ["openai", "auto"] or settings.OPENAI_API_KEY:
+            res = await self.openai_provider.generate_completion(
                 prompt=prompt, system_prompt=system_prompt, temperature=temperature, max_tokens=max_tokens
             )
             if res:
-                return res, self.openrouter_provider.provider_name
+                return res, self.openai_provider.provider_name
 
-        # 2. Optional Gemini Provider (If configured or explicitly selected)
-        if prov_setting in ["gemini", "auto"] or settings.GEMINI_API_KEY:
-            res = await self.gemini_provider.generate_completion(
-                prompt=prompt, system_prompt=system_prompt, temperature=temperature, max_tokens=max_tokens
-            )
-            if res:
-                return res, self.gemini_provider.provider_name
+        # 2. Secondary OpenRouter Free Router (Fallback)
+        res = await self.openrouter_provider.generate_completion(
+            prompt=prompt, system_prompt=system_prompt, temperature=temperature, max_tokens=max_tokens
+        )
+        if res:
+            return res, self.openrouter_provider.provider_name
 
-        # 3. Fallback Heuristic Generator (Offline / Free)
+        # 3. Optional Gemini Provider (Fallback)
+        res = await self.gemini_provider.generate_completion(
+            prompt=prompt, system_prompt=system_prompt, temperature=temperature, max_tokens=max_tokens
+        )
+        if res:
+            return res, self.gemini_provider.provider_name
+
+        # 4. Fallback Heuristic Generator (Offline / Free)
         return None, self.heuristic_provider.provider_name
 
     async def generate_completion(
