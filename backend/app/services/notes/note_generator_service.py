@@ -198,6 +198,15 @@ JSON SCHEMA:
     "२. दुसरा महत्त्वाचा मुद्दा",
     "३. तिसरा महत्त्वाचा मुद्दा"
   ],
+  "important_dates": [
+    "१. महत्त्वाच्या तारखा व वर्षे (उदा. २९ मार्च १८५७: मंगल पांडे यांचे बंड)"
+  ],
+  "important_personalities": [
+    "१. महत्त्वाच्या व्यक्ती व त्यांची भूमिका"
+  ],
+  "memory_tricks": [
+    "💡 लक्षात ठेवण्याची सोपी ट्रिक"
+  ],
   "examples": [
     "उदा. १: ऐतिहासिक किंवा व्यावहारिक उदाहरण"
   ],
@@ -252,7 +261,7 @@ JSON SCHEMA:
             parsed = json.loads(cleaned)
             return self._normalize_chapter_dict(parsed, chapter_title)
         except Exception as e:
-            logger.warning(f"[NoteGenerator] LLM JSON parse failed for chapter '{chapter_title}': {e}. Using robust Marathi heuristic generator.")
+            logger.warning(f"[NoteGenerator] ChatGPT JSON parse failed for chapter '{chapter_title}': {e}. Using robust Marathi heuristic generator.")
             return self._fallback_chapter_note(chapter_title, chapter_text)
 
     def _normalize_chapter_dict(self, data: Dict[str, Any], default_title: str) -> Dict[str, Any]:
@@ -263,6 +272,9 @@ JSON SCHEMA:
             "short_definition_mr": data.get("short_definition_mr") or "या प्रकरणातील मुख्य संकल्पनांचे सारांश रूप.",
             "important_concepts": data.get("important_concepts") or [],
             "key_points": data.get("key_points") or [],
+            "important_dates": data.get("important_dates") or [],
+            "important_personalities": data.get("important_personalities") or [],
+            "memory_tricks": data.get("memory_tricks") or [],
             "examples": data.get("examples") or [],
             "formulas_or_laws": data.get("formulas_or_laws") or [],
             "table": data.get("table") or None,

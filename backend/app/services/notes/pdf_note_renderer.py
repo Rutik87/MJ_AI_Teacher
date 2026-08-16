@@ -238,6 +238,40 @@ class PDFNoteRenderer:
                     story.append(Spacer(1, 3))
                 story.append(Spacer(1, 6))
 
+            # 2a. Important Dates & Timelines
+            if ch.get("important_dates"):
+                story.append(Paragraph("<b>📅 महत्त्वाच्या तारखा व कालक्रम:</b>", box_header_style))
+                story.append(Spacer(1, 4))
+                for d in ch["important_dates"]:
+                    story.append(Paragraph(f"• {d}", body_style))
+                    story.append(Spacer(1, 3))
+                story.append(Spacer(1, 6))
+
+            # 2b. Important Personalities
+            if ch.get("important_personalities"):
+                story.append(Paragraph("<b>👤 महत्त्वाच्या व्यक्ती व योगदान:</b>", box_header_style))
+                story.append(Spacer(1, 4))
+                for p in ch["important_personalities"]:
+                    story.append(Paragraph(f"• {p}", body_style))
+                    story.append(Spacer(1, 3))
+                story.append(Spacer(1, 6))
+
+            # 2c. Memory Tricks (Soft Green Theme)
+            if ch.get("memory_tricks"):
+                trick_items = "<br/>".join([f"💡 {tr}" for tr in ch["memory_tricks"]])
+                trick_p = Paragraph(f"<b>💡 लक्षात ठेवण्याची ट्रिक:</b><br/>{trick_items}", box_body_style)
+                trick_table = Table([[trick_p]], colWidths=[480])
+                trick_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#F6FFED")),
+                    ('BOX', (0, 0), (-1, -1), 1.0, colors.HexColor("#52C41A")),
+                    ('TOPPADDING', (0, 0), (-1, -1), 6),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+                ]))
+                story.append(trick_table)
+                story.append(Spacer(1, 8))
+
             # 3. Important Concepts
             if ch.get("important_concepts"):
                 story.append(Paragraph("<b>💡 महत्त्वाच्या संकल्पना:</b>", box_header_style))

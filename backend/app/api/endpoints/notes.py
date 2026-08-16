@@ -196,6 +196,7 @@ async def get_handwritten_notes_status(
         "generated_at": note.generated_at
     }
 
+@router.get("/{book_id}/pdf")
 @router.get("/{book_id}/download")
 async def download_handwritten_notes_pdf(
     book_id: int,
