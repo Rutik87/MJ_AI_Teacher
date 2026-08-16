@@ -67,7 +67,7 @@ class NumberedNotebookCanvas(canvas.Canvas):
         # 4. Top Header
         self.setFont("Helvetica-Bold", 8)
         self.setFillColor(colors.HexColor("#007791"))
-        self.drawString(75, height - 35, "MPSC AI • Handwritten Revision Notes (हस्तलिखित नोट्स)")
+        self.drawString(75, height - 35, "MPSC AI • हस्तलिखित अभ्यास नोट्स")
 
         self.setStrokeColor(colors.HexColor("#00A8CC"))
         self.setLineWidth(0.8)
@@ -78,7 +78,7 @@ class NumberedNotebookCanvas(canvas.Canvas):
         self.setFillColor(colors.HexColor("#666666"))
         page_str = f"Page {self._pageNumber} of {total_pages}"
         self.drawRightString(width - 35, 25, page_str)
-        self.drawString(75, 25, "MJ AI Study Assistant • Powered by Deep Document RAG")
+        self.drawString(75, 25, "MJ AI अभ्यास सहाय्यक")
 
         self.restoreState()
 
@@ -201,7 +201,7 @@ class PDFNoteRenderer:
 
         # Cover / Header Banner
         story.append(Paragraph(f"✍️ {book_title}", title_style))
-        story.append(Paragraph("<b>MPSC AI • हस्तलिखित अभ्यास नोट्स (Complete Revision Notebook)</b>", subheading_style))
+        story.append(Paragraph("<b>MPSC AI • हस्तलिखित अभ्यास नोट्स</b>", subheading_style))
         story.append(Spacer(1, 10))
 
         for idx, ch in enumerate(chapters, start=1):
@@ -216,7 +216,7 @@ class PDFNoteRenderer:
 
             # 1. Definition Box (Soft Cyan Theme)
             if ch.get("short_definition_mr"):
-                def_p = Paragraph(f"<b>📌 व्याख्या / प्रस्तावना:</b><br/>{ch['short_definition_mr']}", box_body_style)
+                def_p = Paragraph(f"<b>📌 परिचय:</b><br/>{ch['short_definition_mr']}", box_body_style)
                 def_table = Table([[def_p]], colWidths=[480])
                 def_table.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#E6F7FF")),
@@ -231,7 +231,7 @@ class PDFNoteRenderer:
 
             # 2. Key Points
             if ch.get("key_points"):
-                story.append(Paragraph("<b>📝 मुख्य मुद्दे (Key Points):</b>", box_header_style))
+                story.append(Paragraph("<b>📝 मुख्य मुद्दे:</b>", box_header_style))
                 story.append(Spacer(1, 4))
                 for kp in ch["key_points"]:
                     story.append(Paragraph(f"• {kp}", body_style))
@@ -240,7 +240,7 @@ class PDFNoteRenderer:
 
             # 2a. Important Dates & Timelines
             if ch.get("important_dates"):
-                story.append(Paragraph("<b>📅 महत्त्वाच्या तारखा व कालक्रम:</b>", box_header_style))
+                story.append(Paragraph("<b>📅 महत्त्वाच्या तारखा:</b>", box_header_style))
                 story.append(Spacer(1, 4))
                 for d in ch["important_dates"]:
                     story.append(Paragraph(f"• {d}", body_style))
@@ -249,7 +249,7 @@ class PDFNoteRenderer:
 
             # 2b. Important Personalities
             if ch.get("important_personalities"):
-                story.append(Paragraph("<b>👤 महत्त्वाच्या व्यक्ती व योगदान:</b>", box_header_style))
+                story.append(Paragraph("<b>👤 महत्त्वाच्या व्यक्ती:</b>", box_header_style))
                 story.append(Spacer(1, 4))
                 for p in ch["important_personalities"]:
                     story.append(Paragraph(f"• {p}", body_style))
@@ -259,7 +259,7 @@ class PDFNoteRenderer:
             # 2c. Memory Tricks (Soft Green Theme)
             if ch.get("memory_tricks"):
                 trick_items = "<br/>".join([f"💡 {tr}" for tr in ch["memory_tricks"]])
-                trick_p = Paragraph(f"<b>💡 लक्षात ठेवण्याची ट्रिक:</b><br/>{trick_items}", box_body_style)
+                trick_p = Paragraph(f"<b>💡 लक्षात ठेवण्याची युक्ती:</b><br/>{trick_items}", box_body_style)
                 trick_table = Table([[trick_p]], colWidths=[480])
                 trick_table.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#F6FFED")),
@@ -309,7 +309,7 @@ class PDFNoteRenderer:
             # 5. Exam High-Yield Points Box (Soft Amber/Orange)
             if ch.get("exam_points"):
                 exam_items = "<br/>".join([f"🎯 {ep}" for ep in ch["exam_points"]])
-                exam_p = Paragraph(f"<b>🎯 MPSC परीक्षेसाठी अति-महत्त्वाचे:</b><br/>{exam_items}", box_body_style)
+                exam_p = Paragraph(f"<b>🎯 MPSC परीक्षेसाठी महत्त्वाचे:</b><br/>{exam_items}", box_body_style)
                 exam_table = Table([[exam_p]], colWidths=[480])
                 exam_table.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#FFF7E6")),
@@ -325,7 +325,7 @@ class PDFNoteRenderer:
             # 6. Quick Revision Box (Soft Yellow Theme)
             if ch.get("quick_revision_box"):
                 rev_items = "<br/>".join([f"⚡ {qr}" for qr in ch["quick_revision_box"]])
-                rev_p = Paragraph(f"<b>⚡ Quick Revision (उजळणी):</b><br/>{rev_items}", box_body_style)
+                rev_p = Paragraph(f"<b>⚡ झटपट उजळणी:</b><br/>{rev_items}", box_body_style)
                 rev_table = Table([[rev_p]], colWidths=[480])
                 rev_table.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#FEFFE6")),
@@ -341,7 +341,7 @@ class PDFNoteRenderer:
             # 7. Common Mistakes / Traps (Soft Red Theme)
             if ch.get("common_mistakes"):
                 mistake_items = "<br/>".join([f"⚠️ {cm}" for cm in ch["common_mistakes"]])
-                mistake_p = Paragraph(f"<b>⚠️ संभ्रम व सामान्य चुका टाळा:</b><br/>{mistake_items}", box_body_style)
+                mistake_p = Paragraph(f"<b>⚠️ गोंधळाचे मुद्दे:</b><br/>{mistake_items}", box_body_style)
                 mistake_table = Table([[mistake_p]], colWidths=[480])
                 mistake_table.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#FFF1F0")),

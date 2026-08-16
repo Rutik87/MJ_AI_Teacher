@@ -1,23 +1,22 @@
 import 'package:flutter/foundation.dart';
 import 'package:frontend/core/constants/api_endpoints.dart';
 import 'package:frontend/core/network/api_client.dart';
-import 'package:frontend/core/services/audio_service.dart';
 import 'package:frontend/models/chat_message.dart';
 
 class ChatProvider extends ChangeNotifier {
   List<ChatMessageModel> _messages = [];
   List<ChatSessionModel> _sessions = [];
   int? _currentSessionId;
-  String _currentMode = 'general_chat'; // general_chat, teacher_mode, exam_mode, pyq_analysis
   int? _selectedBookFilter;
+  String? _selectedBookTitle;
   bool _isLoading = false;
   String? _errorMessage;
 
   List<ChatMessageModel> get messages => _messages;
   List<ChatSessionModel> get sessions => _sessions;
   int? get currentSessionId => _currentSessionId;
-  String get currentMode => _currentMode;
   int? get selectedBookFilter => _selectedBookFilter;
+  String? get selectedBookTitle => _selectedBookTitle;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
@@ -25,13 +24,15 @@ class ChatProvider extends ChangeNotifier {
     fetchSessions();
   }
 
-  void setMode(String mode) {
-    _currentMode = mode;
+  void setBookFilter(int? bookId, {String? bookTitle}) {
+    _selectedBookFilter = bookId;
+    _selectedBookTitle = bookTitle;
     notifyListeners();
   }
 
-  void setBookFilter(int? bookId) {
-    _selectedBookFilter = bookId;
+  void clearBookFilter() {
+    _selectedBookFilter = null;
+    _selectedBookTitle = null;
     notifyListeners();
   }
 
@@ -71,27 +72,38 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> startNewSession({String title = 'नवीन चर्चा', String mode = 'general_chat'}) async {
+  Future<void> startNewSession({String title = 'नवीन चर्चा', int? bookId, String? bookTitle}) async {
     _currentSessionId = null;
-    _currentMode = mode;
+    _selectedBookFilter = bookId;
+    _selectedBookTitle = bookTitle;
     _messages = [];
+    _errorMessage = null;
     notifyListeners();
   }
 
-  Future<void> sendMessage(
-    String text, {
-    AudioService? audioService,
-    bool autoPlay = true,
-  }) async {
+  Future<void> deleteSession(int sessionId) async {
+    try {
+      await ApiClient.delete(ApiEndpoints.chatSessionMessages(sessionId));
+      _sessions.removeWhere((s) => s.id == sessionId);
+      if (_currentSessionId == sessionId) {
+        startNewSession();
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Delete session error: $e');
+    }
+  }
+
+  Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
     // Add user message to UI immediately
     final tempUserMsg = ChatMessageModel(
       id: DateTime.now().millisecondsSinceEpoch,
       sender: 'user',
-      message: text,
+      message: text.trim(),
       sources: [],
-      mode: _currentMode,
+      mode: 'general_chat',
       hasAudio: false,
       createdAt: DateTime.now().toIso8601String(),
     );
@@ -105,8 +117,8 @@ class ChatProvider extends ChangeNotifier {
         ApiEndpoints.chatMessage,
         body: {
           'session_id': _currentSessionId,
-          'message': text,
-          'mode': _currentMode,
+          'message': text.trim(),
+          'mode': 'general_chat',
           'book_id': _selectedBookFilter,
         },
       );
@@ -115,66 +127,11 @@ class ChatProvider extends ChangeNotifier {
         final aiMsg = ChatMessageModel.fromJson(response.data as Map<String, dynamic>);
         _messages.add(aiMsg);
         fetchSessions(); // update session list
-        notifyListeners();
-
-        // Automatic playback using single authorized MJ voice (mj_primary)
-        if (autoPlay && audioService != null) {
-          try {
-            if (aiMsg.audioUrl != null && aiMsg.audioUrl!.isNotEmpty) {
-              await audioService.playAudioUrl(aiMsg.audioUrl!);
-            } else {
-              await audioService.speakText(aiMsg.message, emotion: 'friendly');
-            }
-          } catch (playbackErr) {
-            debugPrint('[ChatProvider] Auto-play notice: $playbackErr');
-          }
-        }
       } else {
-        _errorMessage = response.errorMessage ?? 'AI उत्तरामध्ये त्रुटी आली.';
+        _errorMessage = response.errorMessage ?? 'ChatGPT कडून प्रतिसाद मिळाला नाही.';
       }
     } catch (e) {
       _errorMessage = 'संपर्क त्रुटी: $e';
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> teachTopic(String topic, {String subject = 'इतिहास', String difficulty = 'medium'}) async {
-    _isLoading = true;
-    _currentMode = 'teacher_mode';
-    notifyListeners();
-
-    try {
-      final response = await ApiClient.post(
-        ApiEndpoints.teacherTeach,
-        body: {
-          'topic': topic,
-          'subject': subject,
-          'difficulty': difficulty,
-        },
-      );
-
-      if (response.isSuccess && response.data != null) {
-        final data = response.data;
-        var rawSources = data['sources'] as List? ?? [];
-        List<SourceCitationModel> citations = rawSources
-            .map((s) => SourceCitationModel.fromJson(s as Map<String, dynamic>))
-            .toList();
-
-        final lessonMsg = ChatMessageModel(
-          id: DateTime.now().millisecondsSinceEpoch,
-          sender: 'ai',
-          message: data['lesson_markdown'] ?? '',
-          sources: citations,
-          mode: 'teacher_mode',
-          hasAudio: false,
-          createdAt: DateTime.now().toIso8601String(),
-        );
-        _messages.add(lessonMsg);
-      }
-    } catch (e) {
-      _errorMessage = 'शिक्षक मोड त्रुटी: $e';
     } finally {
       _isLoading = false;
       notifyListeners();

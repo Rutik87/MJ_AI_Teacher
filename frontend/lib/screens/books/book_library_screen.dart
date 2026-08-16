@@ -6,12 +6,11 @@ import 'package:frontend/core/services/sync_service.dart';
 import 'package:frontend/core/services/offline_book_service.dart';
 import 'package:frontend/models/book.dart';
 import 'package:frontend/providers/books_provider.dart';
-import 'package:frontend/providers/progress_provider.dart';
 import 'package:frontend/widgets/bouncing_wrapper.dart';
+import 'package:frontend/widgets/cyber_drawer.dart';
 import 'package:frontend/screens/books/book_upload_dialog.dart';
 import 'package:frontend/screens/books/pdf_reader_screen.dart';
 import 'package:frontend/screens/books/book_chatgpt_workspace_screen.dart';
-import 'package:frontend/screens/notes/handwritten_notes_screen.dart';
 
 class BookLibraryScreen extends StatefulWidget {
   const BookLibraryScreen({super.key});
@@ -37,7 +36,6 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
     BooksProvider booksProv,
     SyncService syncService,
     OfflineBookService offlineService,
-    ProgressProvider progressProv,
   ) {
     soundService.playBubble();
     showDialog(
@@ -85,7 +83,7 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
                 border: Border.all(color: Colors.redAccent.withOpacity(0.25)),
               ),
               child: Text(
-                '⚠️ PDF, RAG data, progress, bookmarks आणि संबंधित study data कायमचे हटवले जातील.',
+                '⚠️ PDF/TXT फाईल, RAG इंडेक्स आणि चॅट संदर्भ कायमचे हटवले जातील.',
                 style: GoogleFonts.notoSansDevanagari(
                   fontSize: 11.5,
                   color: Colors.white70,
@@ -134,10 +132,7 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
 
               final success = await booksProv.deleteBook(book.id);
               if (success) {
-                // Clear offline cached file
                 await offlineService.removeOfflineBook(book.id);
-                // Refresh progress & analytics
-                progressProv.fetchProgress();
 
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -173,19 +168,25 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
     final booksProv = context.watch<BooksProvider>();
     final syncService = context.watch<SyncService>();
     final offlineService = context.watch<OfflineBookService>();
-    final progressProv = context.watch<ProgressProvider>();
     final books = booksProv.books;
 
     return Scaffold(
       backgroundColor: const Color(0xFF000000), // Pure 100% Pitch Black
+      drawer: CyberDrawer(onSelectTab: (idx) {}),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
+          ),
+        ),
         title: Text(
-          'माझी पुस्तके',
+          '📚 Files & Books (माझी पुस्तके)',
           style: GoogleFonts.notoSansDevanagari(
-            fontSize: 17,
+            fontSize: 16,
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
@@ -218,34 +219,9 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
       ),
       body: Column(
         children: [
-          // Cloud Storage Status Banner
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            color: const Color(0xFF0A0E17),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.speed, color: Color(0xFF00E676), size: 14),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Cloud-First Light App (Zero Storage Overhead)',
-                      style: GoogleFonts.poppins(fontSize: 10.5, color: Colors.white70),
-                    ),
-                  ],
-                ),
-                Text(
-                  '${offlineService.downloadedBookIds.length} Offline',
-                  style: GoogleFonts.poppins(fontSize: 10, color: const Color(0xFF00E5FF)),
-                ),
-              ],
-            ),
-          ),
-
           // 1. Live Search Bar
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
             child: Container(
               height: 44,
               decoration: BoxDecoration(
@@ -344,7 +320,6 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
                               offlineService,
                               booksProv,
                               syncService,
-                              progressProv,
                             );
                           },
                         ),
@@ -369,12 +344,12 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF2979FF), Color(0xFF7B1FA2)],
+                colors: [Color(0xFF2979FF), Color(0xFF00E5FF)],
               ),
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF2979FF).withOpacity(0.5),
+                  color: const Color(0xFF00E5FF).withOpacity(0.4),
                   blurRadius: 16,
                   offset: const Offset(0, 4),
                 ),
@@ -383,14 +358,14 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.cloud_upload_outlined, color: Colors.white, size: 20),
+                const Icon(Icons.cloud_upload_outlined, color: Colors.black, size: 20),
                 const SizedBox(width: 8),
                 Text(
-                  '+ पुस्तक / नोट्स जोडा (PDF/TXT)',
+                  '+ फाईल जोडा (PDF / TXT Upload)',
                   style: GoogleFonts.notoSansDevanagari(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: Colors.black,
                   ),
                 ),
               ],
@@ -409,8 +384,13 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
           Icon(Icons.cloud_queue, size: 56, color: Colors.white.withOpacity(0.2)),
           const SizedBox(height: 12),
           Text(
-            'कोणतेही पुस्तक किंवा नोट्स आढळले नाहीत',
+            'कोणतीही फाईल किंवा पुस्तक सापडले नाही',
             style: GoogleFonts.notoSansDevanagari(fontSize: 14, color: Colors.white60),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'खालील बटण वापरून PDF किंवा TXT अपलोड करा',
+            style: GoogleFonts.notoSansDevanagari(fontSize: 12, color: Colors.white38),
           ),
         ],
       ),
@@ -424,20 +404,8 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
     OfflineBookService offlineService,
     BooksProvider booksProv,
     SyncService syncService,
-    ProgressProvider progressProv,
   ) {
     final isTxt = book.sourceType == 'txt' || book.originalFilename.toLowerCase().endsWith('.txt');
-    final colors = isTxt
-        ? [const Color(0xFF00E5FF), const Color(0xFF00B0FF)]
-        : [
-            const Color(0xFF2979FF),
-            const Color(0xFF00E676),
-            const Color(0xFFFF9100),
-            const Color(0xFFD500F9),
-            const Color(0xFFFF5252),
-          ];
-    final color = colors[index % colors.length];
-    final double percent = (book.progressPercent / 100.0).clamp(0.0, 1.0);
     final isDownloaded = offlineService.isBookDownloaded(book.id);
 
     return BouncingWrapper(
@@ -463,7 +431,9 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
               height: 52,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: isTxt ? [const Color(0xFF0091EA), const Color(0xFF00E5FF)] : [color.withOpacity(0.8), color],
+                  colors: isTxt
+                      ? [const Color(0xFF0091EA), const Color(0xFF00E5FF)]
+                      : [const Color(0xFF2979FF), const Color(0xFF00E676)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -477,7 +447,7 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
             ),
             const SizedBox(width: 14),
 
-            // Book Meta & Progress Bar
+            // Book Meta & Title
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -515,114 +485,88 @@ class _BookLibraryScreenState extends State<BookLibraryScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 2),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '${isTxt ? "TXT नोट्स" : "${book.totalPages} पाने"} • ${(book.fileSizeBytes / (1024 * 1024)).toStringAsFixed(2)} MB',
-                        style: GoogleFonts.poppins(fontSize: 10, color: Colors.white54),
-                      ),
-                      Row(
-                        children: [
-                          BouncingWrapper(
-                            onTap: () {
-                              soundService.playBubble();
-                              Navigator.of(context).push(MaterialPageRoute(
-                                builder: (ctx) => BookChatGPTWorkspaceScreen(
-                                  book: book,
-                                ),
-                              ));
-                            },
-                            child: const Tooltip(
-                              message: '🤖 या पुस्तकासाठी ChatGPT',
-                              child: Icon(
-                                Icons.smart_toy_outlined,
-                                color: Color(0xFF00E676),
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          BouncingWrapper(
-                            onTap: () {
-                              soundService.playBubble();
-                              Navigator.of(context).push(MaterialPageRoute(
-                                builder: (ctx) => HandwrittenNotesScreen(
-                                  bookId: book.id,
-                                  bookTitle: book.title,
-                                ),
-                              ));
-                            },
-                            child: const Tooltip(
-                              message: 'Handwritten Notes बनवा / पहा',
-                              child: Icon(
-                                Icons.edit_note,
-                                color: Color(0xFF00E5FF),
-                                size: 21,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          BouncingWrapper(
-                            onTap: () {
-                              if (isDownloaded) {
-                                offlineService.removeOfflineBook(book.id);
-                              } else {
-                                offlineService.downloadBookForOffline(book);
-                              }
-                            },
-                            child: Icon(
-                              isDownloaded ? Icons.download_done : Icons.download_for_offline_outlined,
-                              color: isDownloaded ? const Color(0xFF00E676) : Colors.white38,
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          BouncingWrapper(
-                            onTap: () => _confirmAndDeleteBook(
-                              context,
-                              book,
-                              booksProv,
-                              syncService,
-                              offlineService,
-                              progressProv,
-                            ),
-                            child: const Icon(
-                              Icons.delete_outline,
-                              color: Colors.white38,
-                              size: 18,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Progress Bar
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: percent > 0 ? percent : 0.0,
-                      minHeight: 4,
-                      backgroundColor: Colors.white12,
-                      color: color,
-                    ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${isTxt ? "TXT नोट्स" : "${book.totalPages} पाने"} • ${(book.fileSizeBytes / (1024 * 1024)).toStringAsFixed(2)} MB',
+                    style: GoogleFonts.poppins(fontSize: 10.5, color: Colors.white54),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 8),
 
-            // Percent Text
-            Text(
-              '${(percent * 100).toInt()}%',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
+            // Actions: 1. Chat with this file | 2. Download | 3. Delete
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Chat With This File Action
+                BouncingWrapper(
+                  onTap: () {
+                    soundService.playBubble();
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (ctx) => BookChatGPTWorkspaceScreen(
+                        book: book,
+                      ),
+                    ));
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF00E676).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF00E676).withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.smart_toy_outlined, color: Color(0xFF00E676), size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          'चॅट',
+                          style: GoogleFonts.notoSansDevanagari(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF00E676),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Download/Offline toggle
+                BouncingWrapper(
+                  onTap: () {
+                    if (isDownloaded) {
+                      offlineService.removeOfflineBook(book.id);
+                    } else {
+                      offlineService.downloadBookForOffline(book);
+                    }
+                  },
+                  child: Icon(
+                    isDownloaded ? Icons.download_done : Icons.download_for_offline_outlined,
+                    color: isDownloaded ? const Color(0xFF00E676) : Colors.white38,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Delete file
+                BouncingWrapper(
+                  onTap: () => _confirmAndDeleteBook(
+                    context,
+                    book,
+                    booksProv,
+                    syncService,
+                    offlineService,
+                  ),
+                  child: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.white38,
+                    size: 20,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

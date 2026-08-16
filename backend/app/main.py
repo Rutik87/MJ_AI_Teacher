@@ -9,21 +9,10 @@ from app.database import init_db
 from app.api import (
     books_router,
     chat_router,
-    teacher_router,
-    tests_router,
-    revision_router,
-    progress_router,
-    voice_router,
     settings_router,
-    current_affairs_router,
-    mj_router,
-    sync_router,
-    notes_router,
-    gemini_live_ws_router,
     rag_router
 )
 from app.utils.logger import logger
-
 from app.services.rag.vector_store import vector_store
 from app.services.storage.cloud_storage import cloud_storage
 
@@ -43,7 +32,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Personal MPSC AI Teacher, PDF Library, and Exam Preparation Platform",
+    description="Personal MPSC AI Workspace: File Management & ChatGPT File-Aware Chat",
     lifespan=lifespan
 )
 
@@ -56,53 +45,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount Routers
+# ============================================================
+# Core Routers: 1. Files & Storage (books) | 2. ChatGPT (chat)
+#               3. RAG Health (rag)        | 4. Settings (settings)
+# ============================================================
 app.include_router(books_router, prefix=settings.API_PREFIX)
 app.include_router(chat_router, prefix=settings.API_PREFIX)
-app.include_router(teacher_router, prefix=settings.API_PREFIX)
-app.include_router(tests_router, prefix=settings.API_PREFIX)
-app.include_router(revision_router, prefix=settings.API_PREFIX)
-app.include_router(progress_router, prefix=settings.API_PREFIX)
-app.include_router(voice_router, prefix=settings.API_PREFIX)
 app.include_router(settings_router, prefix=settings.API_PREFIX)
-app.include_router(current_affairs_router, prefix=settings.API_PREFIX)
-app.include_router(mj_router, prefix=settings.API_PREFIX)
-app.include_router(sync_router, prefix=settings.API_PREFIX)
-app.include_router(notes_router, prefix=settings.API_PREFIX)
-app.include_router(gemini_live_ws_router, prefix=settings.API_PREFIX)
 app.include_router(rag_router, prefix=settings.API_PREFIX)
-
-from voice_lab.lab_server import router as voice_lab_router
-from app.api.endpoints.prototype_notes import router as prototype_notes_router
-from fastapi.responses import FileResponse
-from pathlib import Path
-
-app.include_router(voice_lab_router)
-app.include_router(prototype_notes_router)
-app.include_router(prototype_notes_router, prefix=settings.API_PREFIX)
-
-@app.get("/voice-lab")
-async def serve_voice_lab():
-    lab_html = Path("voice_lab/static/index.html")
-    if lab_html.exists():
-        return FileResponse(lab_html, media_type="text/html")
-    return {"error": "Voice Lab interface not found"}
-
-@app.get("/voice/audio/{filename}")
-async def serve_root_audio_file(filename: str):
-    from fastapi import HTTPException
-    safe_name = Path(filename).name
-    file_path = Path(settings.AUDIO_CACHE_PATH) / safe_name
-    if not file_path.exists():
-        file_path = Path("data/audio_cache") / safe_name
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="ऑडिओ फाईल सापडली नाही.")
-    return FileResponse(
-        path=str(file_path),
-        media_type="audio/mpeg",
-        filename=safe_name,
-        headers={"Accept-Ranges": "bytes"}
-    )
 
 @app.get("/")
 async def root():
@@ -110,7 +60,7 @@ async def root():
         "app": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "status": "online",
-        "message": "नमस्कार! MPSC AI Study Assistant API कार्यरत आहे."
+        "message": "नमस्कार! MPSC AI Study Assistant API कार्यरत आहे. (Files + ChatGPT Chat)"
     }
 
 @app.get("/api/health")

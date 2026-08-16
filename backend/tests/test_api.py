@@ -37,25 +37,17 @@ async def test_chat_message():
     assert len(data["message"]) > 10
 
 @pytest.mark.asyncio
-async def test_generate_mcqs():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.post("/api/tests/generate-mcqs", json={
-            "subject_name": "इतिहास",
-            "count": 3,
-            "difficulty": "medium"
-        })
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 3
-    assert "option_a" in data[0]
-    assert "correct_option" in data[0]
-
-@pytest.mark.asyncio
-async def test_revision_summary():
+async def test_list_books():
     await init_db()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/revision/summary")
+        response = await ac.get("/api/books")
     assert response.status_code == 200
-    data = response.json()
-    assert "total_items" in data
-    assert "due_today_count" in data
+    assert isinstance(response.json(), list)
+
+@pytest.mark.asyncio
+async def test_chat_sessions():
+    await init_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/chat/sessions")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)

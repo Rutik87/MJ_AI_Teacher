@@ -4,9 +4,9 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:frontend/core/constants/api_endpoints.dart';
-import 'package:frontend/core/models/book_model.dart';
+import 'package:frontend/models/book.dart';
 import 'package:frontend/core/services/sound_service.dart';
-import 'package:frontend/widgets/common/bouncing_wrapper.dart';
+import 'package:frontend/widgets/bouncing_wrapper.dart';
 
 class BookChatGPTWorkspaceScreen extends StatefulWidget {
   final BookModel book;
@@ -27,7 +27,6 @@ class _BookChatGPTWorkspaceScreenState extends State<BookChatGPTWorkspaceScreen>
   List<Map<String, dynamic>> _messages = [];
   bool _isLoadingHistory = true;
   bool _isSending = false;
-  String _selectedScope = 'entire_book'; // 'entire_book', 'chapter', 'pages'
   int? _selectedChapterId;
   int? _pageStart;
   int? _pageEnd;
@@ -209,7 +208,7 @@ class _BookChatGPTWorkspaceScreenState extends State<BookChatGPTWorkspaceScreen>
               ],
             ),
             Text(
-              '${widget.book.subjectName} • Common RAG Grounded',
+              '${widget.book.subjectName} • File-Aware Grounded Chat',
               style: GoogleFonts.poppins(fontSize: 10, color: const Color(0xFF00E5FF)),
             ),
           ],
@@ -224,7 +223,7 @@ class _BookChatGPTWorkspaceScreenState extends State<BookChatGPTWorkspaceScreen>
       ),
       body: Column(
         children: [
-          // 1. Scope Selector & Book Info Bar
+          // 1. Scope Info Bar
           _buildScopeSelectorBar(),
 
           // 2. Chat Messages List
@@ -258,7 +257,7 @@ class _BookChatGPTWorkspaceScreenState extends State<BookChatGPTWorkspaceScreen>
           const Icon(Icons.filter_alt_outlined, size: 14, color: Color(0xFF00E5FF)),
           const SizedBox(width: 6),
           Text(
-            'अभ्यास क्षेत्र (Scope):',
+            'अभ्यास संदर्भ (Context):',
             style: GoogleFonts.notoSansDevanagari(fontSize: 11, color: Colors.white70),
           ),
           const SizedBox(width: 8),
@@ -270,8 +269,10 @@ class _BookChatGPTWorkspaceScreenState extends State<BookChatGPTWorkspaceScreen>
               border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.4)),
             ),
             child: Text(
-              '📚 संपूर्ण पुस्तक (${widget.book.totalPages > 0 ? "${widget.book.totalPages} पाने" : "Full Book"})',
+              '📚 ${widget.book.title} (${widget.book.totalPages > 0 ? "${widget.book.totalPages} पाने" : "Full File"})',
               style: GoogleFonts.notoSansDevanagari(fontSize: 11, color: const Color(0xFF00E5FF), fontWeight: FontWeight.bold),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -297,7 +298,7 @@ class _BookChatGPTWorkspaceScreenState extends State<BookChatGPTWorkspaceScreen>
                 const Icon(Icons.auto_stories, size: 42, color: Color(0xFF00E5FF)),
                 const SizedBox(height: 10),
                 Text(
-                  'या पुस्तकासाठी ChatGPT Workspace',
+                  'या फाईलसाठी ChatGPT Workspace',
                   style: GoogleFonts.notoSansDevanagari(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -306,7 +307,7 @@ class _BookChatGPTWorkspaceScreenState extends State<BookChatGPTWorkspaceScreen>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'तुम्ही या पुस्तकाबद्दल कोणताही प्रश्न विचारू शकता, नोट्स, MCQs किंवा उजळणी तक्ता बनवून घेऊ शकता.',
+                  'या फाईलमधील माहितीवर आधारित कोणताही प्रश्न विचारा, नोट्स किंवा संभाव्य MCQs तयार करून घ्या.',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.notoSansDevanagari(fontSize: 12, color: Colors.white60),
                 ),
@@ -317,7 +318,7 @@ class _BookChatGPTWorkspaceScreenState extends State<BookChatGPTWorkspaceScreen>
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              '⚡ Quick Actions (सुरुवात करण्यासाठी क्लिक करा):',
+              '⚡ Quick Actions:',
               style: GoogleFonts.notoSansDevanagari(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white70),
             ),
           ),
@@ -464,7 +465,7 @@ class _BookChatGPTWorkspaceScreenState extends State<BookChatGPTWorkspaceScreen>
             ),
             const SizedBox(width: 8),
             Text(
-              'ChatGPT विचार करत आहे व संदर्भ शोधत आहे...',
+              'ChatGPT संदर्भ शोधत आहे व उत्तर तयार करत आहे...',
               style: GoogleFonts.notoSansDevanagari(fontSize: 12, color: Colors.white70),
             ),
           ],
@@ -535,7 +536,7 @@ class _BookChatGPTWorkspaceScreenState extends State<BookChatGPTWorkspaceScreen>
                   controller: _textController,
                   style: GoogleFonts.notoSansDevanagari(fontSize: 13, color: Colors.white),
                   decoration: InputDecoration(
-                    hintText: 'या पुस्तकाबद्दल विचारा किंवा आज्ञा द्या...',
+                    hintText: 'या फाईलबद्दल विचारा किंवा आज्ञा द्या...',
                     hintStyle: GoogleFonts.notoSansDevanagari(fontSize: 12, color: Colors.white38),
                     border: InputBorder.none,
                   ),

@@ -1,14 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:frontend/core/services/audio_service.dart';
 import 'package:frontend/core/services/sound_service.dart';
 import 'package:frontend/models/book.dart';
-import 'package:frontend/providers/books_provider.dart';
 import 'package:frontend/widgets/bouncing_wrapper.dart';
-import 'package:frontend/providers/mj_voice_provider.dart';
-import 'package:frontend/screens/mj/mj_assistant_screen.dart';
-import 'package:frontend/screens/notes/handwritten_notes_screen.dart';
+import 'package:frontend/screens/books/book_chatgpt_workspace_screen.dart';
 
 class PDFReaderScreen extends StatefulWidget {
   final BookModel book;
@@ -17,7 +12,7 @@ class PDFReaderScreen extends StatefulWidget {
   const PDFReaderScreen({
     super.key,
     required this.book,
-    this.initialPage = 124,
+    this.initialPage = 1,
   });
 
   @override
@@ -37,8 +32,6 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final audioService = context.watch<AudioService>();
-
     return Scaffold(
       backgroundColor: const Color(0xFF000000), // Pure 100% Pitch Black
       appBar: AppBar(
@@ -59,6 +52,8 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         actions: [
           BouncingWrapper(
@@ -76,7 +71,7 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
             child: Padding(
               padding: const EdgeInsets.only(right: 14),
               child: Text(
-                '$_currentPage / ${widget.book.totalPages > 0 ? widget.book.totalPages : 512}',
+                '$_currentPage / ${widget.book.totalPages > 0 ? widget.book.totalPages : 1}',
                 style: GoogleFonts.poppins(fontSize: 11, color: Colors.white60),
               ),
             ),
@@ -93,6 +88,7 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
               children: [
                 // Title Heading
                 Container(
+                  width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: const Color(0xFF0A0E17),
@@ -103,20 +99,19 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'मूलभूत अधिकार (Fundamental Rights)',
+                        widget.book.title,
                         style: GoogleFonts.notoSansDevanagari(
-                          fontSize: 18,
+                          fontSize: 17,
                           fontWeight: FontWeight.bold,
                           color: const Color(0xFF00E5FF),
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       Text(
-                        'भारतीय राज्यघटनेतील मूलभूत अधिकार हे नागरिकांना दिलेले महत्त्वाचे हक्क आहेत जे भाग ३ (कलम १२ ते ३५) मध्ये नमूद केले आहेत.',
+                        'विषय: ${widget.book.subject} • ${widget.book.totalPages} पाने',
                         style: GoogleFonts.notoSansDevanagari(
-                          fontSize: 14,
-                          height: 1.6,
-                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 12,
+                          color: Colors.white70,
                         ),
                       ),
                     ],
@@ -125,8 +120,9 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
 
                 const SizedBox(height: 14),
 
-                // Article 14 Section
+                // Content Box
                 Container(
+                  width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: const Color(0xFF0A0E17),
@@ -139,20 +135,19 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'कलम १४ : कायद्यापुढील समानता',
+                        '📖 वाचन विभाग (Reading Pane)',
                         style: GoogleFonts.notoSansDevanagari(
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
-                          color: const Color(0xFF9C27B0),
+                          color: const Color(0xFF00E676),
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
                       Text(
-                        'कायद्यापुढे सर्व नागरिक समान आहेत आणि सर्वांना कायद्याचे समान संरक्षण मिळण्याचा मूलभूत हक्क आहे.\n\n'
-                        '१. कायद्यापुढे समानता (Equality before Law) - ही संकल्पना ब्रिटिश घटनेवरून घेतली आहे.\n'
-                        '२. कायद्याचे समान संरक्षण (Equal Protection of Laws) - ही संकल्पना अमेरिकन घटनेवरून घेतली आहे.',
+                        'या फाईलमधील मजकूर AI द्वारे RAG प्रणालीमध्ये इंडेक्स झाला आहे. '
+                        'कोणत्याही मुद्द्याचे विश्लेषण, MCQ, सारांश किंवा स्पष्टीकरणासाठी खालील "🤖 ChatGPT" बटण वापरा.',
                         style: GoogleFonts.notoSansDevanagari(
-                          fontSize: 13.5,
+                          fontSize: 13,
                           height: 1.6,
                           color: Colors.white.withOpacity(0.85),
                         ),
@@ -164,13 +159,13 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
             ),
           ),
 
-          // Bottom Floating Toolbar (Screen 5: हायलाईट, शोधा, बुकमार्क, AI ला विचारा)
+          // Bottom Floating Toolbar (हायलाईट, बुकमार्क, ChatGPT)
           Positioned(
-            left: 16,
-            right: 16,
+            left: 20,
+            right: 20,
             bottom: 20,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 color: const Color(0xFF0A0F1E).withOpacity(0.95),
                 borderRadius: BorderRadius.circular(24),
@@ -194,11 +189,6 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
                     },
                   ),
                   _buildToolbarItem(
-                    icon: Icons.search,
-                    label: 'शोधा',
-                    onTap: () => soundService.playClick(),
-                  ),
-                  _buildToolbarItem(
                     icon: _isBookmarked ? Icons.bookmark : Icons.bookmark_border,
                     label: 'बुकमार्क',
                     onTap: () {
@@ -207,29 +197,15 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
                     },
                   ),
                   _buildToolbarItem(
-                    icon: Icons.edit_note,
-                    label: 'Notes',
+                    icon: Icons.smart_toy_outlined,
+                    label: 'ChatGPT सोबत चर्चा',
                     isSpecial: true,
                     onTap: () {
                       soundService.playBubble();
                       Navigator.of(context).push(MaterialPageRoute(
-                        builder: (ctx) => HandwrittenNotesScreen(
-                          bookId: widget.book.id,
-                          bookTitle: widget.book.title,
+                        builder: (ctx) => BookChatGPTWorkspaceScreen(
+                          book: widget.book,
                         ),
-                      ));
-                    },
-                  ),
-                  _buildToolbarItem(
-                    icon: Icons.psychology,
-                    label: 'AI ला विचारा',
-                    isSpecial: false,
-                    onTap: () {
-                      soundService.playBubble();
-                      final mjProv = context.read<MJVoiceProvider>();
-                      mjProv.setContext(bookId: widget.book.id, currentPage: _currentPage);
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (ctx) => const MJAssistantScreen(),
                       ));
                     },
                   ),
@@ -251,7 +227,7 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
     return BouncingWrapper(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: isSpecial
             ? BoxDecoration(
                 color: const Color(0xFF00E5FF).withOpacity(0.18),
@@ -259,15 +235,15 @@ class _PDFReaderScreenState extends State<PDFReaderScreen> {
                 border: Border.all(color: const Color(0xFF00E5FF)),
               )
             : null,
-        child: Column(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: isSpecial ? const Color(0xFF00E5FF) : Colors.white70, size: 20),
-            const SizedBox(height: 2),
+            Icon(icon, color: isSpecial ? const Color(0xFF00E5FF) : Colors.white70, size: 18),
+            const SizedBox(width: 6),
             Text(
               label,
               style: GoogleFonts.notoSansDevanagari(
-                fontSize: 10,
+                fontSize: 11,
                 color: isSpecial ? const Color(0xFF00E5FF) : Colors.white70,
                 fontWeight: isSpecial ? FontWeight.bold : FontWeight.normal,
               ),

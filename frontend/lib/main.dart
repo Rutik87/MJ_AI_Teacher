@@ -2,38 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:frontend/core/theme/app_theme.dart';
-import 'package:frontend/core/services/audio_service.dart';
-import 'package:frontend/core/services/speech_service.dart';
-import 'package:frontend/core/services/sound_service.dart';
-import 'package:frontend/providers/books_provider.dart';
-import 'package:frontend/providers/chat_provider.dart';
-import 'package:frontend/providers/test_provider.dart';
-import 'package:frontend/providers/revision_provider.dart';
-import 'package:frontend/providers/progress_provider.dart';
-import 'package:frontend/providers/settings_provider.dart';
-
-import 'package:frontend/screens/splash/splash_screen.dart';
-import 'package:frontend/screens/home/home_screen.dart';
-import 'package:frontend/screens/chat/ai_chat_screen.dart';
-import 'package:frontend/screens/books/book_library_screen.dart';
-import 'package:frontend/screens/tests/test_home_screen.dart';
-import 'package:frontend/screens/progress/progress_screen.dart';
-import 'package:frontend/screens/profile/profile_screen.dart';
-import 'package:frontend/screens/tests/pyq_screen.dart';
-import 'package:frontend/screens/revision/revision_screen.dart';
-import 'package:frontend/screens/subjects/subject_hub_screen.dart';
-import 'package:frontend/screens/settings/settings_screen.dart';
-
 import 'package:frontend/core/config/app_config.dart';
 import 'package:frontend/core/services/sync_service.dart';
 import 'package:frontend/core/services/offline_book_service.dart';
-import 'package:frontend/core/services/wake_word_service.dart';
-import 'package:frontend/providers/mj_voice_provider.dart';
-import 'package:frontend/screens/mj/mj_assistant_screen.dart';
-import 'package:frontend/core/services/gemini_live_audio_service.dart';
-import 'package:frontend/providers/current_affairs_provider.dart';
-import 'package:frontend/providers/notes_provider.dart';
-import 'package:frontend/screens/current_affairs/current_affairs_screen.dart';
+import 'package:frontend/providers/books_provider.dart';
+import 'package:frontend/providers/chat_provider.dart';
+import 'package:frontend/providers/settings_provider.dart';
+
+import 'package:frontend/screens/splash/splash_screen.dart';
+import 'package:frontend/screens/books/book_library_screen.dart';
+import 'package:frontend/screens/chat/ai_chat_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,16 +25,6 @@ void main() async {
         ChangeNotifierProvider(create: (_) => OfflineBookService()),
         ChangeNotifierProvider(create: (_) => BooksProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
-        ChangeNotifierProvider(create: (_) => TestProvider()),
-        ChangeNotifierProvider(create: (_) => RevisionProvider()),
-        ChangeNotifierProvider(create: (_) => ProgressProvider()),
-        ChangeNotifierProvider(create: (_) => CurrentAffairsProvider()),
-        ChangeNotifierProvider(create: (_) => NotesProvider()),
-        ChangeNotifierProvider(create: (_) => AudioService()),
-        ChangeNotifierProvider(create: (_) => GeminiLiveAudioService()),
-        ChangeNotifierProvider(create: (_) => SpeechService()),
-        ChangeNotifierProvider(create: (_) => WakeWordService()),
-        ChangeNotifierProvider(create: (_) => MJVoiceProvider()),
       ],
       child: const MPSCAssistantApp(),
     ),
@@ -103,7 +71,6 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   int _currentIndex = 0;
 
   void _onTabSelected(int index) {
-    soundService.playClick();
     setState(() {
       _currentIndex = index;
     });
@@ -111,19 +78,9 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> screens = [
-      HomeScreen(onNavigateTab: _onTabSelected),
-      const AIChatScreen(),
-      const BookLibraryScreen(),
-      const TestHomeScreen(),
-      const PYQScreen(),
-      const RevisionScreen(),
-      const ProgressScreen(),
-      const SettingsScreen(),
-      const ProfileScreen(),
-      CurrentAffairsScreen(onNavigateTab: _onTabSelected),
-      MJAssistantScreen(onNavigateTab: _onTabSelected),
-      SubjectHubScreen(onNavigateTab: _onTabSelected),
+    final List<Widget> screens = const [
+      BookLibraryScreen(),
+      AIChatScreen(),
     ];
 
     return Scaffold(
@@ -134,29 +91,33 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         children: screens,
       ),
       bottomNavigationBar: Container(
-        color: Colors.transparent, // Completely transparent bottom bar
+        color: Colors.transparent,
         child: SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 10),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF0A0E17).withOpacity(0.7), // Ultra-sheer dark glass
-                borderRadius: BorderRadius.circular(26),
+                color: const Color(0xFF0A0E17).withOpacity(0.85),
+                borderRadius: BorderRadius.circular(28),
                 border: Border.all(
-                  color: const Color(0xFF00E5FF).withOpacity(0.2),
-                  width: 1.0,
+                  color: const Color(0xFF00E5FF).withOpacity(0.3),
+                  width: 1.2,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.6),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildNavItem(0, Icons.home_outlined, Icons.home, 'Home'),
-                  _buildNavItem(1, Icons.psychology_outlined, Icons.psychology, 'AI'),
-                  _buildNavItem(2, Icons.menu_book_outlined, Icons.menu_book, 'Books'),
-                  _buildNavItem(3, Icons.quiz_outlined, Icons.quiz, 'Test'),
-                  _buildNavItem(8, Icons.person_outline, Icons.person, 'Profile'),
+                  _buildNavItem(0, Icons.folder_outlined, Icons.folder, 'Files (फाईल्स)'),
+                  _buildNavItem(1, Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, 'ChatGPT (चॅट)'),
                 ],
               ),
             ),
@@ -175,38 +136,38 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         decoration: isSelected
             ? BoxDecoration(
-                color: const Color(0xFF7B1FA2).withOpacity(0.25),
-                borderRadius: BorderRadius.circular(18),
+                color: const Color(0xFF00E5FF).withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: const Color(0xFF9C27B0).withOpacity(0.8),
+                  color: const Color(0xFF00E5FF).withOpacity(0.8),
                   width: 1.2,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF9C27B0).withOpacity(0.35),
-                    blurRadius: 8,
+                    color: const Color(0xFF00E5FF).withOpacity(0.25),
+                    blurRadius: 10,
                   ),
                 ],
               )
             : null,
-        child: Column(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               isSelected ? activeIcon : inactiveIcon,
-              color: isSelected ? const Color(0xFF00E5FF) : Colors.white54,
-              size: 20,
+              color: isSelected ? const Color(0xFF00E5FF) : Colors.white60,
+              size: 22,
             ),
-            const SizedBox(height: 2),
+            const SizedBox(width: 8),
             Text(
               label,
               style: GoogleFonts.poppins(
-                fontSize: 9.5,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w400,
-                color: isSelected ? const Color(0xFF00E5FF) : Colors.white54,
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? const Color(0xFF00E5FF) : Colors.white60,
               ),
             ),
           ],
