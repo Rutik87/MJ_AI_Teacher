@@ -72,12 +72,14 @@ app.include_router(notes_router, prefix=settings.API_PREFIX)
 app.include_router(gemini_live_ws_router, prefix=settings.API_PREFIX)
 app.include_router(rag_router, prefix=settings.API_PREFIX)
 
-# Mount Voice Cloning Evaluation Lab
 from voice_lab.lab_server import router as voice_lab_router
+from app.api.endpoints.prototype_notes import router as prototype_notes_router
 from fastapi.responses import FileResponse
 from pathlib import Path
 
 app.include_router(voice_lab_router)
+app.include_router(prototype_notes_router)
+app.include_router(prototype_notes_router, prefix=settings.API_PREFIX)
 
 @app.get("/voice-lab")
 async def serve_voice_lab():

@@ -516,3 +516,75 @@ async def reindex_book(book_id: int, background_tasks: BackgroundTasks, db: Asyn
 
     background_tasks.add_task(_background_process_pdf, book.id, book.file_path, book.storage_path)
     return {"message": "इंडेक्सिंग प्रक्रिया सुरू झाली.", "book_id": book_id}
+
+from pydantic import BaseModel
+
+class BookChatRequestBody(BaseModel):
+    message: str
+    chapter_id: Optional[int] = None
+    page_start: Optional[int] = None
+    page_end: Optional[int] = None
+    user_id: int = 1
+
+@router.post("/books/{book_id}/chat")
+async def chat_with_book(
+    book_id: int,
+    body: BookChatRequestBody,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Dedicated ChatGPT interaction area for a specific uploaded book.
+    Supports free-form instructions, scope filtering, MCQ/notes/revision generation, and citations.
+    """
+    from app.services.ai.book_chat_service import book_chat_service
+    try:
+        result = await book_chat_service.execute_book_chat(
+            book_id=book_id,
+            user_id=body.user_id,
+            message=body.message,
+            db=db,
+            chapter_id=body.chapter_id,
+            page_start=body.page_start,
+            page_end=body.page_end
+        )
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.error(f"[BookChat] Error during book chat: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Book Chat त्रुटी: {e}")
+
+@router.get("/books/{book_id}/chat/history")
+async def get_book_chat_history(
+    book_id: int,
+    user_id: int = 1,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Retrieves isolated ChatGPT conversation history for a specific book.
+    """
+    from app.services.ai.book_chat_service import book_chat_service
+    return await book_chat_service.get_book_chat_history(
+        book_id=book_id,
+        user_id=user_id,
+        db=db,
+        limit=limit
+    )
+
+@router.delete("/books/{book_id}/chat/history")
+async def clear_book_chat_history(
+    book_id: int,
+    user_id: int = 1,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Clears isolated ChatGPT conversation history for a specific book.
+    """
+    from app.services.ai.book_chat_service import book_chat_service
+    await book_chat_service.clear_book_chat_history(
+        book_id=book_id,
+        user_id=user_id,
+        db=db
+    )
+    return {"success": True, "message": "या पुस्तकाची Chat History साफ केली गेली."}

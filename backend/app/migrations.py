@@ -271,6 +271,18 @@ TABLE_COLUMNS_SPEC: Dict[str, List[Tuple[str, str, str, Optional[str], Optional[
         ("created_at", "TIMESTAMP", "DATETIME", "DEFAULT CURRENT_TIMESTAMP", "DEFAULT CURRENT_TIMESTAMP"),
         ("updated_at", "TIMESTAMP", "DATETIME", "DEFAULT CURRENT_TIMESTAMP", "DEFAULT CURRENT_TIMESTAMP"),
     ],
+    "book_chat_messages": [
+        ("id", "SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY", None, None),
+        ("book_id", "INTEGER NOT NULL", "INTEGER NOT NULL", "DEFAULT 0", "DEFAULT 0"),
+        ("user_id", "INTEGER NOT NULL", "INTEGER NOT NULL", "DEFAULT 1", "DEFAULT 1"),
+        ("chapter_id", "INTEGER", "INTEGER", "DEFAULT NULL", "DEFAULT NULL"),
+        ("sender", "VARCHAR(20) NOT NULL", "VARCHAR(20) NOT NULL", "DEFAULT 'user'", "DEFAULT 'user'"),
+        ("message", "TEXT NOT NULL", "TEXT NOT NULL", "DEFAULT ''", "DEFAULT ''"),
+        ("output_type", "VARCHAR(50)", "VARCHAR(50)", "DEFAULT 'chat'", "DEFAULT 'chat'"),
+        ("sources", "JSON", "JSON", "DEFAULT '[]'::json", "DEFAULT '[]'"),
+        ("pdf_url", "VARCHAR(500)", "VARCHAR(500)", "DEFAULT NULL", "DEFAULT NULL"),
+        ("created_at", "TIMESTAMP", "DATETIME", "DEFAULT CURRENT_TIMESTAMP", "DEFAULT CURRENT_TIMESTAMP"),
+    ],
 }
 
 async def run_schema_migrations(conn: AsyncConnection):

@@ -379,3 +379,23 @@ class HandwrittenNote(Base):
 
     user = relationship("User", back_populates="handwritten_notes")
     book = relationship("Book", back_populates="handwritten_notes")
+
+
+class BookChatMessage(Base):
+    """
+    Dedicated isolated ChatGPT conversation history per uploaded book.
+    """
+    __tablename__ = "book_chat_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    book_id = Column(Integer, ForeignKey("books.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    chapter_id = Column(Integer, ForeignKey("chapters.id"), nullable=True)
+    sender = Column(String(20), nullable=False)  # 'user' or 'ai'
+    message = Column(Text, nullable=False)
+    output_type = Column(String(50), default="chat")  # chat, notes, mcq, quiz, revision, dates, comparison, table, handwritten_notes
+    sources = Column(JSON, default=list)  # [{book_name, chapter, page_number, text_snippet}]
+    pdf_url = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    book = relationship("Book")
+    user = relationship("User")
